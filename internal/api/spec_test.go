@@ -106,6 +106,19 @@ func TestSpecCoverage(t *testing.T) {
 		k := opKey{r.Method, r.Path}
 		routes[k] = true
 		scopeOf[k] = r.Scope
+		if r.Path == "/health" {
+			if r.Scope != "" {
+				t.Errorf("%s: public route must have no scope", k)
+			}
+			continue
+		}
+		want := "audiofile/write"
+		if r.Method == "GET" {
+			want = "audiofile/read"
+		}
+		if r.Scope != want {
+			t.Errorf("%s: scope = %q, want %q", k, r.Scope, want)
+		}
 	}
 
 	// openapi.yaml
@@ -132,6 +145,10 @@ func TestSpecCoverage(t *testing.T) {
 				t.Errorf("%s: missing summary", k)
 			}
 			if path == "/health" {
+				sec := child(op, "security")
+				if sec == nil || sec.Kind != yaml.SequenceNode || len(sec.Content) != 0 {
+					t.Errorf("%s: security must be an explicit empty list", k)
+				}
 				continue
 			}
 			sec := child(op, "security")
@@ -155,11 +172,14 @@ func TestSpecCoverage(t *testing.T) {
 		}
 		props := child(ev, "Properties")
 		k := opKey{strings.ToUpper(scalar(child(props, "Method"))), scalar(child(props, "Path"))}
+		if tplOps[k] {
+			t.Errorf("event %s: duplicate template event for %s", name, k)
+		}
 		tplOps[k] = true
 		auth := child(props, "Auth")
 		if scalar(child(auth, "Authorizer")) == "NONE" {
-			if scopeOf[k] != "" {
-				t.Errorf("event %s (%s): Authorizer NONE but route has scope %q", name, k, scopeOf[k])
+			if k != (opKey{"GET", "/health"}) {
+				t.Errorf("event %s (%s): Authorizer NONE is allowed only for GET /health", name, k)
 			}
 			continue
 		}

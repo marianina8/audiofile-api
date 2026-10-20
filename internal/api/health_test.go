@@ -39,3 +39,18 @@ func TestUnknownRouteIsJSON404(t *testing.T) {
 		t.Errorf("error = %+v", body.Error)
 	}
 }
+
+func TestHealthWrongMethod(t *testing.T) {
+	rec := httptest.NewRecorder()
+	newTestServer().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/health", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+	var body errorBody
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Error.Code != "not_found" {
+		t.Errorf("code = %q", body.Error.Code)
+	}
+}
