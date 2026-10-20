@@ -230,13 +230,19 @@ func RunContract(t *testing.T, newStore func(t *testing.T) Store) {
 		if err := s.PutTrack(ctx, model.Track{ID: "b"}); err != nil {
 			t.Fatal(err)
 		}
-		a, _ := s.GetTrack(ctx, "a")
+		a, err := s.GetTrack(ctx, "a")
+		if err != nil {
+			t.Fatal(err)
+		}
 		got := slices.Clone(a.Tags)
 		slices.Sort(got) // do not depend on set ordering
 		if !slices.Equal(got, []string{"live", "rock"}) {
 			t.Errorf("tags = %v", a.Tags)
 		}
-		b, _ := s.GetTrack(ctx, "b")
+		b, err := s.GetTrack(ctx, "b")
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(b.Tags) != 0 {
 			t.Errorf("nil tags came back as %v", b.Tags)
 		}
@@ -250,25 +256,79 @@ func RunContract(t *testing.T, newStore func(t *testing.T) Store) {
 		if err := s.PutPlaylist(ctx, model.Playlist{ID: "p", TrackIDs: []string{"a", "b"}}); err != nil {
 			t.Fatal(err)
 		}
-		tr, _ := s.GetTrack(ctx, "a")
+		tr, err := s.GetTrack(ctx, "a")
+		if err != nil || len(tr.Tags) != 1 {
+			t.Fatalf("GetTrack = %+v, %v", tr, err)
+		}
 		tr.Tags[0] = "mutated"
-		if again, _ := s.GetTrack(ctx, "a"); again.Tags[0] != "x" {
+		again, err := s.GetTrack(ctx, "a")
+		if err != nil || len(again.Tags) != 1 {
+			t.Fatalf("GetTrack again = %+v, %v", again, err)
+		}
+		if again.Tags[0] != "x" {
 			t.Errorf("track tags mutated in store: %v", again.Tags)
 		}
-		pl, _ := s.GetPlaylist(ctx, "p")
+		pl, err := s.GetPlaylist(ctx, "p")
+		if err != nil || len(pl.TrackIDs) != 2 {
+			t.Fatalf("GetPlaylist = %+v, %v", pl, err)
+		}
 		pl.TrackIDs[0] = "mutated"
-		if again, _ := s.GetPlaylist(ctx, "p"); again.TrackIDs[0] != "a" {
-			t.Errorf("playlist ids mutated in store: %v", again.TrackIDs)
+		pAgain, err := s.GetPlaylist(ctx, "p")
+		if err != nil || len(pAgain.TrackIDs) != 2 {
+			t.Fatalf("GetPlaylist again = %+v, %v", pAgain, err)
 		}
-		list, _ := s.ListPlaylists(ctx)
+		if pAgain.TrackIDs[0] != "a" {
+			t.Errorf("playlist ids mutated in store: %v", pAgain.TrackIDs)
+		}
+		list, err := s.ListPlaylists(ctx)
+		if err != nil || len(list) != 1 || len(list[0].TrackIDs) != 2 {
+			t.Fatalf("ListPlaylists = %+v, %v", list, err)
+		}
 		list[0].TrackIDs[1] = "mutated"
-		if again, _ := s.GetPlaylist(ctx, "p"); again.TrackIDs[1] != "b" {
-			t.Errorf("playlist ids mutated via list: %v", again.TrackIDs)
+		pAgain, err = s.GetPlaylist(ctx, "p")
+		if err != nil || len(pAgain.TrackIDs) != 2 {
+			t.Fatalf("GetPlaylist after list = %+v, %v", pAgain, err)
 		}
-		all, _ := s.AllTracks(ctx)
+		if pAgain.TrackIDs[1] != "b" {
+			t.Errorf("playlist ids mutated via list: %v", pAgain.TrackIDs)
+		}
+		all, err := s.AllTracks(ctx)
+		if err != nil || len(all) != 1 || len(all[0].Tags) != 1 {
+			t.Fatalf("AllTracks = %+v, %v", all, err)
+		}
 		all[0].Tags[0] = "mutated"
-		if again, _ := s.GetTrack(ctx, "a"); again.Tags[0] != "x" {
-			t.Errorf("track tags mutated via AllTracks: %v", again.Tags)
+		tAgain, err := s.GetTrack(ctx, "a")
+		if err != nil || len(tAgain.Tags) != 1 {
+			t.Fatalf("GetTrack after all = %+v, %v", tAgain, err)
+		}
+		if tAgain.Tags[0] != "x" {
+			t.Errorf("track tags mutated via AllTracks: %v", tAgain.Tags)
+		}
+	})
+
+	t.Run("list without limit returns everything", func(t *testing.T) {
+		s := newStore(t)
+		for i := 1; i <= 3; i++ {
+			if err := s.PutTrack(ctx, model.Track{ID: fmt.Sprintf("t%d", i)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got, next, err := s.ListTracks(ctx, 0, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 3 || next != "" {
+			t.Errorf("got %d tracks, next %q; want 3 and empty", len(got), next)
+		}
+	})
+
+	t.Run("garbage cursor is an error", func(t *testing.T) {
+		s := newStore(t)
+		if err := s.PutTrack(ctx, model.Track{ID: "a"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := s.ListTracks(ctx, 2, "!!!not a cursor!!!"); err == nil {
+			t.Error("expected an error for a garbage cursor")
 		}
 	})
 }
