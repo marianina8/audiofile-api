@@ -81,6 +81,9 @@ func (d *Dynamo) ensure(ctx context.Context, table string, v any) error {
 	if err != nil {
 		return err
 	}
+	if _, ok := item["id"]; !ok {
+		return errors.New("empty id")
+	}
 	_, err = d.db.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName:           aws.String(table),
 		Item:                item,
@@ -93,6 +96,9 @@ func (d *Dynamo) ensure(ctx context.Context, table string, v any) error {
 }
 
 func (d *Dynamo) get(ctx context.Context, table, entity, id string, out any) error {
+	if id == "" { // empty strings cannot be keys; nothing can exist under one
+		return fmt.Errorf("%s %q: %w", entity, id, ErrNotFound)
+	}
 	res, err := d.db.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName:      aws.String(table),
 		Key:            idKey(id),
@@ -108,6 +114,9 @@ func (d *Dynamo) get(ctx context.Context, table, entity, id string, out any) err
 }
 
 func (d *Dynamo) del(ctx context.Context, table, entity, id string) error {
+	if id == "" {
+		return fmt.Errorf("%s %q: %w", entity, id, ErrNotFound)
+	}
 	_, err := d.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName:           aws.String(table),
 		Key:                 idKey(id),

@@ -32,6 +32,16 @@ func RunContract(t *testing.T, newStore func(t *testing.T) Store) {
 		}
 	})
 
+	t.Run("empty id is ErrNotFound", func(t *testing.T) {
+		s := newStore(t)
+		if _, err := s.GetTrack(ctx, ""); !errors.Is(err, ErrNotFound) {
+			t.Errorf("GetTrack(\"\") err = %v, want ErrNotFound", err)
+		}
+		if err := s.DeleteTrack(ctx, ""); !errors.Is(err, ErrNotFound) {
+			t.Errorf("DeleteTrack(\"\") err = %v, want ErrNotFound", err)
+		}
+	})
+
 	t.Run("track put get delete", func(t *testing.T) {
 		s := newStore(t)
 		if err := s.PutTrack(ctx, model.Track{ID: "a", Title: "One"}); err != nil {
@@ -53,6 +63,7 @@ func RunContract(t *testing.T, newStore func(t *testing.T) Store) {
 	})
 
 	t.Run("paging", func(t *testing.T) {
+		// Order across pages is not asserted: it is stable but unspecified.
 		s := newStore(t)
 		for i := 1; i <= 5; i++ {
 			if err := s.PutTrack(ctx, model.Track{ID: fmt.Sprintf("t%d", i)}); err != nil {
