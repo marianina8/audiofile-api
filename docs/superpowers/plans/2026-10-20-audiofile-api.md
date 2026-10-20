@@ -15,7 +15,7 @@
 - Module `github.com/marianina8/audiofile-api`. Lambdas: `provided.al2023`, `arm64`, binary named `bootstrap`, built with `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 -tags lambda.norpc`.
 - Never modify the book repo. Never use the AWS root user; every AWS command uses `--profile audiofile-admin` (`AWS_PROFILE=audiofile-admin` in scripts).
 - No secrets, account IDs, emails, tokens, pool IDs or client IDs in the repo, logs or terminal output. Scripts read IDs from stack outputs at runtime; tokens go into env vars and are never echoed; Lambdas never log `Authorization` headers or tokens.
-- Audio is never committed (`.gitignore` already excludes it). `~/audio` is read only by `scripts/seed.sh`, `scripts/draft-library.sh`, and the local-only beatdoctor check.
+- Audio is never committed (`.gitignore` already excludes it). `~/audio` is read only by `scripts/seed.sh`, `scripts/draft-library.sh`, `cmd/genreguess` (local tool, never deployed), and the local-only beatdoctor check. Bedrock is used only by `cmd/genreguess` on Marian's Mac; no deployed Lambda calls Bedrock.
 - JSON is snake_case except the legacy `Audio` shape, which keeps the book's exact field names. Errors: `{"error":{"code":"…","message":"…"}}`; codes `bad_request`, `not_found`, `payload_too_large`, `internal`.
 - Enums: `TrackStatus` = `processing|ready|failed`; `BPMSource` = `tag|measured|manual`.
 - BPM: valid TBPM is 40–250; detection range 60–200; 1 decimal. Energy = clamp((LUFS+24)/18, 0, 1), 2 decimals.
@@ -26,11 +26,11 @@
 - Throttling: api stage 20 rps / burst 40; bridge 10 / 20; mcp-host 20 / 40.
 - Commit after every task with a message ending in `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Tests needing ffmpeg/ffprobe call `testutil.RequireFFmpeg(t)`, which skips with `"ffmpeg/ffprobe not on PATH; install ffmpeg to run audio tests"`.
-- **STOP points** (ask Marian, wait): before T16, T17's deploy, T18's upload, T19's browser sign-in, T25's deploy, T26 hand-off, each T28 lab step, and before any deploy that adds a paid resource.
+- **STOP points** (ask Marian, wait): before T16, T17's deploy, T18's first Bedrock call, T18's upload, T19's browser sign-in, T25's deploy, T26 hand-off, each T28 lab step, and before any deploy that adds a paid resource.
 
 ## Review Focus
 
-- **Tag-less files.** All 18 of Marian's files have no ID3 tags at all. A track must still end up `ready` with a filename-derived title, `Unknown Artist`, no album, and `bpm_source: measured`. Covered in T14 (`TestProcess_NoTags`). T18 adds `library.csv` tagging so real metadata exists.
+- **Tag-less files.** All 18 of Marian's files have no ID3 tags at all. A track must still end up `ready` with a filename-derived title, `Unknown Artist`, no album, and `bpm_source: measured`. Covered in T14 (`TestProcess_NoTags`). T18 adds automatic `library.csv` tagging (filename + optional Voxtral genre guess) so real metadata exists without manual work.
 - **Tracks that aren't ready.** A `processing` or `failed` track sent to `POST /playlists/{id}/tracks` gets a 400 naming its id. `/search` never returns it. T7 has `TestSearch_ExcludesNotReady`; T8 has `TestAddPlaylistTracks_RejectsNotReady`.
 - **Audio with no beat.** Silence, a lone sustained tone, or a clip under 10 s gives the track `failed` status and an `error` that says no tempo could be detected. It must not get a garbage BPM. T13 has `TestDetectBPM_SilenceErrors`; T14 has `TestProcess_TempoFailureMarksFailed`.
 - **Reprocessing.** An S3 retry or a second upload to the same key must not overwrite a `manual` BPM or user `tags`. T14 has `TestProcess_PreservesManualBPMAndTags`.
@@ -525,7 +525,7 @@ Any step-4–7 error → `failed` with an `error` message in the form `"<step>: 
 **Files:** Create `docs/aws-setup.md`, which records the steps taken, with no IDs.
 
 - [ ] **Step 1: STOP.** Ask Marian whether her account uses IAM Identity Center. Use Identity Center if available; otherwise an IAM user with console MFA. Explain the trade-off in two lines and wait.
-- [ ] **Step 2:** Give her a permissions policy file, `docs/audiofile-admin-policy.json`, scoped to: CloudFormation, Lambda, API Gateway, Cognito IdP, DynamoDB, S3, IAM role/policy management limited to `arn:aws:iam::*:role/audiofile-*` and `mcp-*` (plus `iam:PassRole` for those), SSM `/audiofile/*`, Budgets, CloudWatch Logs, and `sts:GetCallerIdentity`. Walk her through creating `audiofile-admin` with it, in her browser.
+- [ ] **Step 2:** Give her a permissions policy file, `docs/audiofile-admin-policy.json`, scoped to: CloudFormation, Lambda, API Gateway, Cognito IdP, DynamoDB, S3, IAM role/policy management limited to `arn:aws:iam::*:role/audiofile-*` and `mcp-*` (plus `iam:PassRole` for those), SSM `/audiofile/*`, Budgets, CloudWatch Logs, `sts:GetCallerIdentity`, `bedrock:InvokeModel` on `arn:aws:bedrock:us-west-2::foundation-model/mistral.voxtral-small-24b-2507` only, and `aws-marketplace:Subscribe` + `aws-marketplace:ViewSubscriptions` (needed once, the first time a Mistral model is called; note this in `docs/aws-setup.md`). Walk her through creating `audiofile-admin` with it, in her browser.
 - [ ] **Step 3:** Have her run `! aws configure sso --profile audiofile-admin` (or the equivalent for the chosen mechanism) herself.
 - [ ] **Step 4:** Run `aws sts get-caller-identity --profile audiofile-admin --query Arn --output text | sed -E 's/[0-9]{12}/<account>/'`. Expected: an ARN that ends in `audiofile-admin` with the account masked.
 - [ ] **Step 5:** Commit `docs: audiofile-admin setup`.
@@ -571,11 +571,29 @@ Script contracts:
 ### Task 18: Library metadata and seeding
 
 **Files:**
-- Create: `scripts/draft-library.sh`, `scripts/seed.sh`, `scripts/reset-playlists.sh`
+- Create: `scripts/draft-library.sh`, `scripts/seed.sh`, `scripts/reset-playlists.sh`, `cmd/genreguess/main.go`, `cmd/genreguess/genre.go`
+- Test: `cmd/genreguess/genre_test.go`
 - Test: `shellcheck`; `scripts/seed.sh --dry-run`
 
 Marian's 19 files in `~/audio` carry **no ID3 tags at all**: no title, artist, genre, TBPM or copyright. To give the catalog real artists, genres and albums:
-- **`scripts/draft-library.sh`** writes `~/audio/library.csv` with header `filename,title,artist,album,genre,year`. It's prefilled from filenames: artist is the text before the first `-`, and title is `TitleFromFilename` minus the artist. Genre and album are left blank for Marian. It never overwrites an existing CSV.
+- **`scripts/draft-library.sh`** writes `~/audio/library.csv` with header `filename,title,artist,album,genre,genre_source,year`. It never overwrites an existing CSV. **Marian is not required to edit it.**
+  - Artist is the Pixabay uploader: the text before the first `-`, with a built-in override map for multi-word uploaders (`cinematic-soul` → `Cinematic Soul`, `alex-morgan` → `Alex Morgan`, `tazdev_music` → `Tazdev Music`, `freesoundserver` → `FreeSoundServer`).
+  - Title is the remaining filename words minus filler (`no-copyright-music`, `free-music`, `background-music`, `musicno-copyright`, trailing id). When nothing is left, it becomes `"<Artist> Track <n>"`.
+  - Genre is taken from filename keywords, with `genre_source=filename`: `rock` → Rock, `electro-industrial` → Industrial, `piano` → Classical, `cinematic` → Cinematic, `upbeat` → Pop. Otherwise it's left empty for `cmd/genreguess`.
+  - Album and year are left empty.
+- **`cmd/genreguess`** (Go, run locally with `go run ./cmd/genreguess`, never deployed):
+  - Fixed genre list: `Electronic, Industrial, Rock, Pop, Hip Hop, Cinematic, Ambient, Classical`.
+  - For each CSV row, ffmpeg cuts 30 s from the middle into a temp `mp3` (mono, 64 kbps).
+  - The clip goes to Bedrock Converse (`bedrockruntime`, profile `audiofile-admin`, region `us-west-2`, model `mistral.voxtral-small-24b-2507`) as an `audio` content block (`format: mp3`, bytes), followed by a text block: `"Which one genre best fits this music? Answer with exactly one of: <list>."`. `maxTokens` is 10 and `temperature` is 0.
+  - Replies are normalized case-insensitively against the list. Anything else counts as `unknown`.
+  - Flags: `--validate` and `--fill`.
+  - **`--validate`** runs only the rows with `genre_source=filename` and prints file, expected, guessed and ✓/✗.
+    - Expected-sets: Industrial also accepts Electronic, Classical also accepts Ambient, and Cinematic also accepts Ambient.
+    - It passes when at least 4 of 5 are correct.
+  - **`--fill`** refuses to run unless the last `--validate` passed (a marker file in `~/audio/.genreguess-validated`). It fills only empty genres, with `genre_source=model`.
+  - It prints no credentials. Cost is under $0.01.
+  - Unit test `TestNormalizeGenre`: `" rock."` → `Rock`, `"Hip-hop"` → `Hip Hop`, `"jazz"` → `unknown`.
+  - Unit test `TestBuildConverseInput`: one audio block with format mp3, then one text block containing all 8 genres. Uses a fake client; no AWS.
 - **`scripts/seed.sh [--dry-run] [--include-nc]`:**
   1. Run ffprobe on every `~/audio/*.mp3` and print a table of file, title, artist, genre, TBPM and copyright. A `library.csv` row overrides empty tags, and the table marks the source.
   2. Flag NonCommercial when the copyright, comment or license matches `NonCommercial|BY-NC|CC-NC`. Skip those unless `--include-nc` is given.
@@ -586,13 +604,17 @@ Marian's 19 files in `~/audio` carry **no ID3 tags at all**: no title, artist, g
   7. Print the final table: title, artist, genre, bpm, bpm source, energy. Then print the energy and BPM spread as min, median and max, and the count of tracks with bpm ≥ 120 and energy ≥ 0.6.
 - **`scripts/reset-playlists.sh`** deletes every playlist and prints the count.
 
-- [ ] **Step 1:** Run `scripts/draft-library.sh` and show Marian the drafted CSV. **STOP:** she fills in genre, and album and year if she likes, and fixes artist and title. Explain that this metadata is what makes `/artists`, `/albums` and `/genres` meaningful. Suggested genre buckets: `Electronic`, `Rock`, `Cinematic`, `Ambient`, `Hip Hop`, `Pop`, `Industrial`.
-- [ ] **Step 2:** Run `scripts/seed.sh --dry-run`. Expected: the ffprobe table, the duplicate `(1)` file reported, and 18 to upload. **STOP:** show the table and wait for Marian's go-ahead.
-- [ ] **Step 3:** Run `scripts/seed.sh`. Expected: 18 `ready` and 0 `failed`, and every row has a bpm and an energy.
+- [ ] **Step 1:** Write `cmd/genreguess` with its two unit tests (TDD), and `scripts/draft-library.sh`. Run `go test ./cmd/genreguess/` (expected: PASS) and `scripts/draft-library.sh`. Show Marian the drafted CSV for information only; she may glance at it but doesn't have to edit it.
+- [ ] **Step 2: STOP.** Ask before the first Bedrock call (it costs under a cent and triggers the one-time Marketplace subscription). Then run `go run ./cmd/genreguess --validate` and show the ✓/✗ table.
+  - **If it passes (≥ 4/5),** run `--fill`, show the filled genres, and commit nothing from `~/audio`.
+  - **If it fails,** tell Marian, leave the genres blank, and continue.
+  - Record the result (score, model, date) in `docs/notes/genre-guess.md`.
+- [ ] **Step 3:** Run `scripts/seed.sh --dry-run`. Expected: the ffprobe table, the duplicate `(1)` file reported, and 18 to upload. **STOP:** show the table and wait for Marian's go-ahead.
+- [ ] **Step 4:** Run `scripts/seed.sh`. Expected: 18 `ready` and 0 `failed`, and every row has a bpm and an energy.
   - If any track fails or the spread doesn't separate "upbeat", show Marian the numbers before changing anything (spec §6).
   - Half- or double-tempo outliers get fixed via `PATCH bpm` only with Marian's say-so.
-- [ ] **Step 4:** Run `scripts/reset-playlists.sh`. Expected: `deleted 0 playlists`.
-- [ ] **Step 5:** Commit `feat: library seeding scripts`.
+- [ ] **Step 5:** Run `scripts/reset-playlists.sh`. Expected: `deleted 0 playlists`.
+- [ ] **Step 6:** Commit `feat: library seeding scripts and genre guesser`.
 
 ### Task 19: Verify Cognito resource binding (spike, throwaway)
 
