@@ -23,7 +23,11 @@ type fakeAnalyzer struct {
 	lufs     float64
 	samples  []float32
 	onLUFS   func()
-	paths    []string
+	dec      struct {
+		start, dur float64
+		rate       int
+	}
+	paths []string
 }
 
 func (f *fakeAnalyzer) Probe(_ context.Context, path string) (audio.Probe, error) {
@@ -38,7 +42,8 @@ func (f *fakeAnalyzer) IntegratedLUFS(context.Context, string) (float64, error) 
 	return f.lufs, nil
 }
 
-func (f *fakeAnalyzer) DecodeMono(context.Context, string, float64, float64, int) ([]float32, error) {
+func (f *fakeAnalyzer) DecodeMono(_ context.Context, _ string, start, dur float64, rate int) ([]float32, error) {
+	f.dec.start, f.dec.dur, f.dec.rate = start, dur, rate
 	return f.samples, nil
 }
 
@@ -208,5 +213,109 @@ func TestProcess_IgnoresOtherKeys(t *testing.T) {
 	all, _ := e.st.AllTracks(context.Background())
 	if len(all) != 1 {
 		t.Fatalf("tracks = %d", len(all))
+	}
+}
+
+func TestProcess_DeletedMidProcessingStaysDeleted(t *testing.T) {
+	e := setup(t, "a.mp3")
+	e.an.probe = audio.Probe{DurationSeconds: 100}
+	e.an.onLUFS = func() { _ = e.st.DeleteTrack(context.Background(), "t1") }
+	if err := e.p.Process(context.Background(), "tracks/t1.mp3"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.st.GetTrack(context.Background(), "t1"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("track resurrected: %v", err)
+	}
+}
+
+type flakyStore struct {
+	*store.Memory
+	gets, puts int
+}
+
+func (f *flakyStore) GetTrack(ctx context.Context, id string) (model.Track, error) {
+	f.gets++
+	if f.gets == 2 {
+		return model.Track{}, errors.New("boom")
+	}
+	return f.Memory.GetTrack(ctx, id)
+}
+
+func (f *flakyStore) PutTrack(ctx context.Context, t model.Track) error {
+	f.puts++
+	return f.Memory.PutTrack(ctx, t)
+}
+
+func TestProcess_ReReadErrorReturnsError(t *testing.T) {
+	e := setup(t, "a.mp3")
+	fs := &flakyStore{Memory: e.st}
+	e.p.Store = fs
+	e.an.probe = audio.Probe{TBPM: "124", DurationSeconds: 100}
+	if err := e.p.Process(context.Background(), "tracks/t1.mp3"); err == nil {
+		t.Fatal("expected error")
+	}
+	if fs.puts != 0 {
+		t.Fatalf("puts = %d", fs.puts)
+	}
+	if e.track(t).Status != model.StatusProcessing {
+		t.Fatal("track was written")
+	}
+}
+
+func TestProcess_MissingTrackCreated(t *testing.T) {
+	e := setup(t, "a.mp3")
+	_ = e.st.DeleteTrack(context.Background(), "t1")
+	e.an.probe = audio.Probe{Title: "T", TBPM: "100", DurationSeconds: 10}
+	if err := e.p.Process(context.Background(), "tracks/t1.mp3"); err != nil {
+		t.Fatal(err)
+	}
+	tr := e.track(t)
+	if tr.Status != model.StatusReady || tr.S3Key != "tracks/t1.mp3" || tr.CreatedAt != "2026-10-20T12:00:00Z" {
+		t.Fatalf("got %+v", tr)
+	}
+}
+
+func TestProcess_AlbumClearedOnReprocess(t *testing.T) {
+	e := setup(t, "a.mp3")
+	tr := e.track(t)
+	tr.Album, tr.AlbumID = "Old", "old-album"
+	_ = e.st.PutTrack(context.Background(), tr)
+	e.an.probe = audio.Probe{Artist: "X", TBPM: "100", DurationSeconds: 10}
+	if err := e.p.Process(context.Background(), "tracks/t1.mp3"); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.track(t); got.AlbumID != "" || got.Album != "" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestProcess_CarryOverOntoFailedTrack(t *testing.T) {
+	e := setup(t, "a.mp3")
+	e.an.samples = make([]float32, 30*22050)
+	e.an.probe = audio.Probe{DurationSeconds: 100}
+	e.an.onLUFS = func() {
+		cur := e.track(t)
+		cur.Tags = []string{"keep"}
+		_ = e.st.PutTrack(context.Background(), cur)
+	}
+	if err := e.p.Process(context.Background(), "tracks/t1.mp3"); err != nil {
+		t.Fatal(err)
+	}
+	got := e.track(t)
+	if got.Status != model.StatusFailed || len(got.Tags) != 1 || got.Tags[0] != "keep" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestProcess_DecodeWindow(t *testing.T) {
+	for _, c := range []struct{ dur, start float64 }{{200, 70}, {40, 0}} {
+		e := setup(t, "a.mp3")
+		e.an.probe = audio.Probe{DurationSeconds: c.dur}
+		if err := e.p.Process(context.Background(), "tracks/t1.mp3"); err != nil {
+			t.Fatal(err)
+		}
+		if e.an.dec.start != c.start || e.an.dec.dur != 60 || e.an.dec.rate != 22050 {
+			t.Fatalf("dur %v: got %+v", c.dur, e.an.dec)
+		}
 	}
 }

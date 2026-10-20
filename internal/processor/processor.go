@@ -37,6 +37,8 @@ type Processor struct {
 	TmpDir   string
 }
 
+// keyRe matches the object key. The key must already be URL-decoded: the Lambda
+// entrypoint owns url.QueryUnescape of S3 event keys.
 var keyRe = regexp.MustCompile(`^tracks/([^/]+)\.mp3$`)
 
 const (
@@ -45,7 +47,8 @@ const (
 )
 
 // Process handles one uploaded key. It returns nil after recording a failed
-// track and an error only when the store cannot be written.
+// track and an error only when the store cannot be written. key must be
+// URL-decoded; the Lambda entrypoint owns url.QueryUnescape of S3 event keys.
 func (p *Processor) Process(ctx context.Context, key string) error {
 	m := keyRe.FindStringSubmatch(key)
 	if m == nil {
@@ -56,6 +59,7 @@ func (p *Processor) Process(ctx context.Context, key string) error {
 	now := p.now().UTC().Format(time.RFC3339)
 
 	t, err := p.Store.GetTrack(ctx, id)
+	existed := err == nil
 	if errors.Is(err, store.ErrNotFound) {
 		t = model.Track{ID: id, S3Key: key, OriginalFilename: id + ".mp3", CreatedAt: now}
 	} else if err != nil {
@@ -73,17 +77,27 @@ func (p *Processor) Process(ctx context.Context, key string) error {
 	t.UpdatedAt = now
 
 	// Processing takes seconds; a user may have tagged or PATCHed meanwhile.
-	if fresh, err := p.Store.GetTrack(ctx, id); err == nil {
+	// The re-read and PutTrack are not atomic; a small race window remains.
+	fresh, err := p.Store.GetTrack(ctx, id)
+	switch {
+	case err == nil:
 		t.Tags = fresh.Tags
 		if fresh.BPMSource == model.BPMManual {
 			t.BPM, t.BPMSource = fresh.BPM, fresh.BPMSource
 		}
+	case errors.Is(err, store.ErrNotFound) && existed:
+		slog.Info("track deleted during processing; not saving", "id", id)
+		return nil
+	case errors.Is(err, store.ErrNotFound):
+		// created by this run; nothing to merge
+	default:
+		return fmt.Errorf("re-read track: %w", err)
 	}
 	if err := p.Store.PutTrack(ctx, t); err != nil {
 		return fmt.Errorf("put track: %w", err)
 	}
 	slog.Info("processed track", "id", id, "status", t.Status, "bpm", t.BPM,
-		"bpm_source", t.BPMSource, "energy", t.Energy)
+		"bpm_source", t.BPMSource, "energy", t.Energy, "error", t.Error)
 	return nil
 }
 
@@ -145,9 +159,10 @@ func (p *Processor) analyse(ctx context.Context, t *model.Track, id, key string)
 		}
 	}
 
-	t.ArtistID, t.AlbumID, err = catalog.Ensure(ctx, p.Store, p.now(), t.Artist, t.Album, t.Year)
+	artistID, albumID, err := catalog.Ensure(ctx, p.Store, p.now(), t.Artist, t.Album, t.Year)
 	if err != nil {
 		return "catalog", err
 	}
+	t.ArtistID, t.AlbumID = artistID, albumID
 	return "", nil
 }
