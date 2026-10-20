@@ -1,0 +1,36 @@
+// Package store defines the persistence interface and an in-memory implementation.
+package store
+
+import (
+	"context"
+	"errors"
+
+	"github.com/marianina8/audiofile-api/internal/model"
+)
+
+// ErrNotFound is returned (wrapped or bare) when an entity does not exist.
+var ErrNotFound = errors.New("not found")
+
+// Store is the persistence boundary for tracks, artists, albums and playlists.
+type Store interface {
+	PutTrack(ctx context.Context, t model.Track) error
+	GetTrack(ctx context.Context, id string) (model.Track, error)
+	DeleteTrack(ctx context.Context, id string) error
+	// ListTracks pages tracks in id order. limit<=0 means no limit (callers
+	// that want to reject it must validate first). next=="" at the end.
+	ListTracks(ctx context.Context, limit int, cursor string) ([]model.Track, string, error)
+	AllTracks(ctx context.Context) ([]model.Track, error)
+	TracksByArtist(ctx context.Context, artistID string) ([]model.Track, error) // by title
+	TracksByAlbum(ctx context.Context, albumID string) ([]model.Track, error)   // by track_number
+	EnsureArtist(ctx context.Context, a model.Artist) error                     // create if absent; never overwrites
+	GetArtist(ctx context.Context, id string) (model.Artist, error)
+	ListArtists(ctx context.Context) ([]model.Artist, error)
+	EnsureAlbum(ctx context.Context, a model.Album) error
+	GetAlbum(ctx context.Context, id string) (model.Album, error)
+	ListAlbums(ctx context.Context) ([]model.Album, error)
+	AlbumsByArtist(ctx context.Context, artistID string) ([]model.Album, error) // by year
+	PutPlaylist(ctx context.Context, p model.Playlist) error
+	GetPlaylist(ctx context.Context, id string) (model.Playlist, error)
+	ListPlaylists(ctx context.Context) ([]model.Playlist, error)
+	DeletePlaylist(ctx context.Context, id string) error
+}
