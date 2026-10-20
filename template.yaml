@@ -198,7 +198,7 @@ Resources:
   FFmpegLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      Description: Static ffmpeg and ffprobe (arm64) in /opt/bin
+      Description: Static ffmpeg and ffprobe 9.0.2 (arm64, from mwader/static-ffmpeg) in /opt/bin
       ContentUri: layers/ffmpeg/
       CompatibleArchitectures: [arm64]
       CompatibleRuntimes: [provided.al2023]

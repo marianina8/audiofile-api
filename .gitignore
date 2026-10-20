@@ -13,7 +13,6 @@
 bin/
 dist/
 layers/ffmpeg/bin/
-layers/ffmpeg/.cache/
 *.zip
 
 # Local config and secrets

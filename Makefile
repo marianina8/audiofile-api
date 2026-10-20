@@ -29,8 +29,8 @@ build: validate
 validate:
 	sam validate --lint -t template.yaml
 
-# Downloads (once, cached and checksum-verified) the pinned static ffmpeg build
-# and puts ffmpeg/ffprobe in layers/ffmpeg/bin/ (git-ignored).
+# Copies ffmpeg/ffprobe from the digest-pinned static-ffmpeg image (needs Docker),
+# verifies their checksums and puts them in layers/ffmpeg/bin/ (git-ignored).
 layer:
 	$(MAKE) -C layers/ffmpeg build-FFmpegLayer ARTIFACTS_DIR=$(CURDIR)/layers/ffmpeg
 
