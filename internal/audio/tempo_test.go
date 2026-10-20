@@ -68,13 +68,34 @@ func TestDetectBPM_SilenceErrors(t *testing.T) {
 	}
 }
 
+func TestDetectBPM_NoiseErrors(t *testing.T) {
+	for _, sigma := range []float64{0.1, 0.001} {
+		rng := rand.New(rand.NewSource(7))
+		s := make([]float32, 30*clickRate)
+		for i := range s {
+			s[i] = float32(sigma * rng.NormFloat64())
+		}
+		if bpm, err := DetectBPM(s, clickRate); !errors.Is(err, ErrNoTempo) {
+			t.Errorf("noise sigma=%v: bpm=%v err=%v", sigma, bpm, err)
+		}
+	}
+}
+
 func TestDetectBPM_TooShort(t *testing.T) {
 	if _, err := DetectBPM(clickTrack(120, 5), clickRate); !errors.Is(err, ErrNoTempo) {
 		t.Errorf("err = %v", err)
 	}
+	// Shorter than one FFT frame, and a bad rate, must error rather than panic.
+	if _, err := DetectBPM(make([]float32, 100), 1); !errors.Is(err, ErrNoTempo) {
+		t.Errorf("sub-frame: err = %v", err)
+	}
+	if _, err := DetectBPM(clickTrack(120, 30), 0); !errors.Is(err, ErrNoTempo) {
+		t.Errorf("rate 0: err = %v", err)
+	}
 }
 
 func TestDetectBPM_RealFile(t *testing.T) {
+	const realFileRate = 22050 // decode rate the pipeline uses (spec §6)
 	path := os.Getenv("BEATDOCTOR_MP3")
 	if path == "" {
 		t.Skip("BEATDOCTOR_MP3 not set")
@@ -86,11 +107,11 @@ func TestDetectBPM_RealFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := math.Max(0, info.DurationSeconds/2-30)
-	s, err := tools.DecodeMono(context.Background(), path, start, 60, clickRate)
+	s, err := tools.DecodeMono(context.Background(), path, start, 60, realFileRate)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := DetectBPM(s, clickRate)
+	got, err := DetectBPM(s, realFileRate)
 	if err != nil {
 		t.Fatal(err)
 	}

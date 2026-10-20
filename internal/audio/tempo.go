@@ -18,7 +18,7 @@ const (
 	tempoMaxBPM    = 200.0 // fastest lag searched
 	tempoPriorBPM  = 120.0 // centre of the log-Gaussian prior
 	tempoPriorSig  = 1.0   // prior width in octaves
-	tempoMinScore  = 0.05  // below this, no tempo
+	tempoMinScore  = 0.11  // white noise peaks ~0.06, quietest real track ~0.21
 	tempoMinSecs   = 10
 	// tempoMinVar is the flux variance below which the envelope counts as flat. A steady
 	// sine leaves only FFT-leakage jitter (variance ~1e-4); music is orders of magnitude above.
@@ -26,21 +26,44 @@ const (
 )
 
 // DetectBPM estimates the tempo of mono PCM samples at rate Hz, rounded to 1 decimal.
-// Spectral-flux onset envelope, autocorrelation over 60–200 BPM lags weighted by a
-// log-Gaussian prior centred on 120 BPM, then parabolic peak refinement.
+// Spectral-flux onset envelope, normalised autocorrelation (mean removed) over 60–200 BPM
+// lags weighted by a log-Gaussian prior centred on 120 BPM, then parabolic peak refinement.
 func DetectBPM(samples []float32, rate int) (float64, error) {
-	if rate <= 0 || len(samples) < tempoMinSecs*rate {
+	bpm, score, err := detectTempo(samples, rate)
+	if err != nil {
+		return 0, err
+	}
+	if score < tempoMinScore {
 		return 0, ErrNoTempo
+	}
+	return bpm, nil
+}
+
+// detectTempo returns the best BPM and its prior-weighted score without applying the
+// rejection threshold.
+func detectTempo(samples []float32, rate int) (float64, float64, error) {
+	if rate <= 0 || len(samples) < tempoFrame || len(samples) < tempoMinSecs*rate {
+		return 0, 0, ErrNoTempo
 	}
 	flux := onsetEnvelope(samples)
 	if !hasVariance(flux) {
-		return 0, ErrNoTempo
+		return 0, 0, ErrNoTempo
 	}
 	fr := float64(rate) / tempoHop
 	minL := int(math.Round(60 * fr / tempoMaxBPM))
 	maxL := int(math.Round(60 * fr / tempoMinBPM))
-	if minL < 1 || maxL+1 >= len(flux) {
-		return 0, ErrNoTempo
+	if minL < 2 || maxL+1 >= len(flux) {
+		return 0, 0, ErrNoTempo
+	}
+	// Remove the mean so acf[L]/acf[0] is a correlation: near 0 for noise, near 1 for a
+	// steady beat. Without this the non-negative flux gives every lag a ~0.3 floor.
+	var mean float64
+	for _, v := range flux {
+		mean += v
+	}
+	mean /= float64(len(flux))
+	for i := range flux {
+		flux[i] -= mean
 	}
 	acf := make([]float64, maxL+2)
 	for l := range acf {
@@ -54,9 +77,9 @@ func DetectBPM(samples []float32, rate int) (float64, error) {
 		acf[l] = sum
 	}
 	if acf[0] <= 0 {
-		return 0, ErrNoTempo
+		return 0, 0, ErrNoTempo
 	}
-	best, bestScore := 0, 0.0
+	best, bestScore := 0, math.Inf(-1)
 	for l := minL; l <= maxL; l++ {
 		bpm := 60 * fr / float64(l)
 		d := math.Log2(bpm/tempoPriorBPM) / tempoPriorSig
@@ -65,16 +88,13 @@ func DetectBPM(samples []float32, rate int) (float64, error) {
 			best, bestScore = l, score
 		}
 	}
-	if best == 0 || bestScore < tempoMinScore {
-		return 0, ErrNoTempo
-	}
 	lag := float64(best)
-	if a, b, c := acf[best-1], acf[best], acf[best+1]; a-2*b+c != 0 {
-		if off := 0.5 * (a - c) / (a - 2*b + c); math.Abs(off) <= 1 {
-			lag += off
-		}
+	if a, b, c := acf[best-1], acf[best], acf[best+1]; a-2*b+c < 0 {
+		off := 0.5 * (a - c) / (a - 2*b + c)
+		lag += math.Max(-0.5, math.Min(0.5, off))
 	}
-	return math.Round(600*fr/lag) / 10, nil
+	bpm := math.Max(tempoMinBPM, math.Min(tempoMaxBPM, 60*fr/lag))
+	return math.Round(bpm*10) / 10, bestScore, nil
 }
 
 // onsetEnvelope returns the half-wave-rectified spectral flux of log magnitudes,
