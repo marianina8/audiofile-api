@@ -850,6 +850,40 @@ paths:
               application/json:
                 schema:
                   $ref: "#/components/schemas/Error"
+  /playlists/{id}/player:
+    post:
+      operationId: createPlaylistPlayer
+      summary: Create a playlist player link
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/playlistId"
+      responses:
+        "201":
+          description: A temporary link to a page that plays the playlist.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, expires_at]
+                properties:
+                  url:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+        "400":
+          description: The playlist has no playable tracks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such playlist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   parameters:
     playlistId:

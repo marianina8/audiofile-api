@@ -349,3 +349,14 @@ Resources:
               AuthorizationScopes:
                 - audiofile/write
                 - aws.cognito.signin.user.admin
+        CreatePlaylistPlayer:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /playlists/{id}/player
+            Method: POST
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/write
+                - aws.cognito.signin.user.admin

@@ -41,5 +41,6 @@ func Routes() []Route {
 		{Method: "POST", Path: "/playlists/{id}/tracks", Scope: "audiofile/write"},
 		{Method: "DELETE", Path: "/playlists/{id}/tracks/{trackId}", Scope: "audiofile/write"},
 		{Method: "PUT", Path: "/playlists/{id}/tracks/order", Scope: "audiofile/write"},
+		{Method: "POST", Path: "/playlists/{id}/player", Scope: "audiofile/write"},
 	}
 }

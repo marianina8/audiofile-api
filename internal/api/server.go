@@ -53,6 +53,7 @@ func New(d Deps) http.Handler {
 		"POST /playlists/{id}/tracks":             s.addPlaylistTracks,
 		"DELETE /playlists/{id}/tracks/{trackId}": s.removePlaylistTrack,
 		"PUT /playlists/{id}/tracks/order":        s.reorderPlaylistTracks,
+		"POST /playlists/{id}/player":             s.createPlaylistPlayer,
 	}
 
 	mux := http.NewServeMux()
