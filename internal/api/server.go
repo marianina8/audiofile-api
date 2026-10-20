@@ -24,14 +24,26 @@ type server struct {
 func New(d Deps) http.Handler {
 	s := &server{Deps: d}
 	handlers := map[string]http.HandlerFunc{
-		"GET /health":             s.health,
-		"POST /tracks/uploads":    s.createTrackUpload,
-		"GET /tracks":             s.listTracks,
-		"GET /tracks/{id}":        s.getTrack,
-		"PATCH /tracks/{id}":      s.updateTrack,
-		"DELETE /tracks/{id}":     s.deleteTrack,
-		"GET /tracks/{id}/stream": s.getTrackStream,
-		"GET /tracks/{id}/status": s.getTrackStatus,
+		"GET /health":                    s.health,
+		"POST /tracks/uploads":           s.createTrackUpload,
+		"GET /tracks":                    s.listTracks,
+		"GET /tracks/{id}":               s.getTrack,
+		"PATCH /tracks/{id}":             s.updateTrack,
+		"DELETE /tracks/{id}":            s.deleteTrack,
+		"GET /tracks/{id}/stream":        s.getTrackStream,
+		"GET /tracks/{id}/status":        s.getTrackStatus,
+		"GET /search":                    s.searchTracks,
+		"GET /artists":                   s.listArtists,
+		"GET /artists/{id}":              s.getArtist,
+		"GET /artists/{id}/tracks":       s.listArtistTracks,
+		"GET /artists/{id}/albums":       s.listArtistAlbums,
+		"GET /albums":                    s.listAlbums,
+		"GET /albums/{id}":               s.getAlbum,
+		"GET /albums/{id}/tracks":        s.listAlbumTracks,
+		"GET /genres":                    s.listGenres,
+		"GET /tags":                      s.listTags,
+		"POST /tracks/{id}/tags":         s.addTrackTags,
+		"DELETE /tracks/{id}/tags/{tag}": s.removeTrackTag,
 	}
 
 	mux := http.NewServeMux()

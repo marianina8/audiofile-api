@@ -118,3 +118,135 @@ Resources:
               AuthorizationScopes:
                 - audiofile/read
                 - aws.cognito.signin.user.admin
+        SearchTracks:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /search
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        ListArtists:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /artists
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        GetArtist:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /artists/{id}
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        ListArtistTracks:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /artists/{id}/tracks
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        ListArtistAlbums:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /artists/{id}/albums
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        ListAlbums:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /albums
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        GetAlbum:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /albums/{id}
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        ListAlbumTracks:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /albums/{id}/tracks
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        ListGenres:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /genres
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        ListTags:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /tags
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        AddTrackTags:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /tracks/{id}/tags
+            Method: POST
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/write
+                - aws.cognito.signin.user.admin
+        RemoveTrackTag:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /tracks/{id}/tags/{tag}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/write
+                - aws.cognito.signin.user.admin
