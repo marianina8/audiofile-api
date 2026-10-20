@@ -3,7 +3,7 @@
 *.wav
 *.flac
 *.m4a
-audio/
+/audio/
 
 # OS / editor
 .DS_Store
