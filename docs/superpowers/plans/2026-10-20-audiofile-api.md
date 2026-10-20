@@ -30,7 +30,7 @@
 
 ## Review Focus
 
-1. **Tag-less files.** All 18 of Marian's files have no ID3 tags at all. A track must still end up `ready` with a filename-derived title, `Unknown Artist`, no album, and `bpm_source: measured`. Covered in T14 (`TestProcess_NoTags`). T18 adds `library.csv` tagging so real metadata exists.
+- **Tag-less files.** All 18 of Marian's files have no ID3 tags at all. A track must still end up `ready` with a filename-derived title, `Unknown Artist`, no album, and `bpm_source: measured`. Covered in T14 (`TestProcess_NoTags`). T18 adds `library.csv` tagging so real metadata exists.
 - **Tracks that aren't ready.** A `processing` or `failed` track sent to `POST /playlists/{id}/tracks` gets a 400 naming its id. `/search` never returns it. T7 has `TestSearch_ExcludesNotReady`; T8 has `TestAddPlaylistTracks_RejectsNotReady`.
 - **Audio with no beat.** Silence, a lone sustained tone, or a clip under 10 s gives the track `failed` status and an `error` that says no tempo could be detected. It must not get a garbage BPM. T13 has `TestDetectBPM_SilenceErrors`; T14 has `TestProcess_TempoFailureMarksFailed`.
 - **Reprocessing.** An S3 retry or a second upload to the same key must not overwrite a `manual` BPM or user `tags`. T14 has `TestProcess_PreservesManualBPMAndTags`.
@@ -70,7 +70,7 @@
     - A processing track gives `Status "Initiating"` and an empty, non-nil `Error`.
     - A failed track with `"boom"` gives `"Complete"` and `["boom"]`.
     - Marshalled JSON contains `"transcript": ""` and the keys `Id`, `Path`, `Metadata`, `Status`, `Error`.
-  - `TestTrackJSON_TagsNeverNull`: a track with nil `Tags`, marshalled through the API helper, gives `"tags":[]`.
+  - `TestJSONTags`: a track with nil `Tags` returns a non-nil empty slice from `JSONTags()`. T6's `TestGetTrack_TagsNeverNull` checks the HTTP JSON.
 - [ ] **Step 3:** Run `go test ./internal/...`. Expected: FAIL (undefined).
 - [ ] **Step 4:** Implement.
 - [ ] **Step 5:** Run `go test ./internal/...`. Expected: PASS.
@@ -235,6 +235,7 @@ type Blob interface {
   - `TestDeleteTrack_RemovesFromPlaylists`: seed a playlist `[a,b,c]` and delete `b`. Expect 204, the playlist becomes `[a,c]`, and the blob key is gone.
   - `TestStream`: the response has a `url` containing `ttl=900` and an `expires_at`.
   - `TestStatus`: a failed track returns `{"id","status":"failed","error":"…"}`.
+  - `TestGetTrack_TagsNeverNull`: a track stored with nil tags returns `"tags":[]`.
 - [ ] **Step 2:** Run `go test ./internal/api/ -run 'Track|Upload|Stream|Status'`. Expected: FAIL.
 - [ ] **Step 3:** Implement. Decode JSON with `DisallowUnknownFields` for PATCH.
 - [ ] **Step 4:** Run `go test ./...`. Expected: PASS, including `TestSpecCoverage`.
@@ -261,6 +262,7 @@ type Blob interface {
     - `artist=beat-doctor` and `artist=Beat Doctor` give the same result.
   - `TestSearch_ExcludesNotReady`.
   - `TestSearch_BadNumber`: `bpm_min=abc` returns 400.
+  - `TestSearch_Limit`: `limit=2` returns 2 items; `limit=101` returns 400.
   - `TestArtistEndpoints`: `track_count` and `album_count` are correct, and an unknown id returns 404.
   - `TestAlbumTracksOrdered`.
   - `TestGenres`: returns `{items:[{name,track_count}]}` sorted by name. Empty genre is excluded.
@@ -430,7 +432,7 @@ refine L with parabolic interpolation on acf around best; bpm = 60*fr/L
   - `TestDetectBPM_RealFile`: skips unless `BEATDOCTOR_MP3` is set. It decodes the middle 60 s with `DecodeMono` and expects 124 ± 2 (or 62 ± 2), logging the value.
 - [ ] **Step 2:** Run. Expected: FAIL.
 - [ ] **Step 3:** Implement as above.
-- [ ] **Step 4:** Run `go test ./internal/audio/`, then `BEATDOCTOR_MP3=$PWD/../audiofile-book/audio/beatdoctor.mp3 go test ./internal/audio/ -run RealFile -v` against a local clone outside the repo. Expected: PASS. Record the measured value in the commit message.
+- [ ] **Step 4:** Run `go test ./internal/audio/`, then `BEATDOCTOR_MP3=<local clone of github.com/marianina8/audiofile, outside this repo>/audio/beatdoctor.mp3 go test ./internal/audio/ -run RealFile -v`. Expected: PASS. Record the measured value in the commit message.
 - [ ] **Step 5:** Commit `feat: tempo detector`.
 
 ### Task 14: Processor
@@ -513,7 +515,7 @@ Any step-4–7 error → `failed` with an `error` message in the form `"<step>: 
   - `samconfig.toml` contains no `@`.
 - [ ] **Step 2:** Run. Expected: FAIL.
 - [ ] **Step 3:** Implement the entrypoints, template and layer Makefile.
-- [ ] **Step 4:** Run `go test ./...`, `sam validate --lint`, `make layer` and `sam build`. Expected: all succeed, and `.aws-sam/build/FFmpegLayer/bin/ffprobe -version` can't run on macOS (it's an arm64 Linux binary), but `file` reports `ELF 64-bit LSB executable, ARM aarch64`.
+- [ ] **Step 4:** Run `go test ./...`, `sam validate --lint`, `make layer` and `sam build`. Expected: all succeed, and `file .aws-sam/build/FFmpegLayer/bin/ffprobe` reports `ELF 64-bit LSB executable, ARM aarch64`.
 - [ ] **Step 5:** Commit `feat: Lambda entrypoints and audiofile-api SAM stack`.
 
 ## Phase B — First AWS contact (STOP before each task)
@@ -686,7 +688,7 @@ DCR: a JSON body with `redirect_uris` (all must pass the allowlist), `token_endp
 - Test: `internal/oauth/flow_test.go`
 
 **Interfaces:**
-- Consumes: T21, and `jwtverify` (only to read `cognito:groups` from Cognito's access token after the code exchange. The token comes straight from Cognito over TLS, so read the claims; signature verification is still done via `jwtverify.Verifier.Verify` with `audience` = the resource).
+- Consumes: T21, and `jwtverify.Verifier.Verify` (T20), called on Cognito's access token after the code exchange with `audience` = the resource and `requiredGroup` = `mcp-users`.
 - Produces the full flow:
   - **`/authorize`:**
     - Requires `response_type=code`, `client_id`, `redirect_uri`, `code_challenge` with `code_challenge_method=S256`, and `resource` in `Config.Resources`. `state` is optional, `scope` is optional (intersected with `openid email`).
