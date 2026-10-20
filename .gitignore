@@ -1,0 +1,21 @@
+# Audio is never committed (licensed content; lives in ~/audio and S3)
+*.mp3
+*.wav
+*.flac
+*.m4a
+audio/
+
+# OS / editor
+.DS_Store
+
+# Build output
+.aws-sam/
+bin/
+dist/
+layers/ffmpeg/bin/
+*.zip
+
+# Local config and secrets
+.env
+.env.*
+samconfig.local.toml
