@@ -11,6 +11,9 @@ import (
 // ErrNotFound is returned (wrapped or bare) when an entity does not exist.
 var ErrNotFound = errors.New("not found")
 
+// ErrInvalidCursor is returned by ListTracks for a cursor it cannot decode.
+var ErrInvalidCursor = errors.New("invalid cursor")
+
 // Store is the persistence boundary for tracks, artists, albums and playlists.
 type Store interface {
 	PutTrack(ctx context.Context, t model.Track) error

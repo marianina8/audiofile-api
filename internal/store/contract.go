@@ -338,8 +338,8 @@ func RunContract(t *testing.T, newStore func(t *testing.T) Store) {
 		if err := s.PutTrack(ctx, model.Track{ID: "a"}); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := s.ListTracks(ctx, 2, "!!!not a cursor!!!"); err == nil {
-			t.Error("expected an error for a garbage cursor")
+		if _, _, err := s.ListTracks(ctx, 2, "!!!not a cursor!!!"); !errors.Is(err, ErrInvalidCursor) {
+			t.Errorf("err = %v, want ErrInvalidCursor", err)
 		}
 	})
 }

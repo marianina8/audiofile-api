@@ -100,7 +100,7 @@ func (m *Memory) ListTracks(_ context.Context, limit int, cursor string) ([]mode
 	if cursor != "" {
 		b, err := base64.RawURLEncoding.DecodeString(cursor)
 		if err != nil {
-			return nil, "", fmt.Errorf("invalid cursor: %w", err)
+			return nil, "", fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 		}
 		after = string(b)
 	}

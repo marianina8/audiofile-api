@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -290,4 +291,28 @@ func TestStatus(t *testing.T) {
 		t.Errorf("body = %v", m)
 	}
 	wantErrCode(t, e.do("GET", "/tracks/nope/status", ""), 404, "not_found")
+}
+
+type failingStore struct {
+	*store.Memory
+}
+
+func (failingStore) GetTrack(context.Context, string) (model.Track, error) {
+	return model.Track{}, errors.New("secret dynamo detail")
+}
+
+func (failingStore) ListTracks(context.Context, int, string) ([]model.Track, string, error) {
+	return nil, "", errors.New("secret dynamo detail")
+}
+
+func TestStoreFailureIs500(t *testing.T) {
+	h := New(Deps{Store: failingStore{store.NewMemory()}, Blob: blob.NewFake(), Now: func() time.Time { return fixedNow }, NewID: func() string { return "x" }})
+	for _, path := range []string{"/tracks/a", "/tracks?cursor=abc", "/tracks"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		wantErrCode(t, rec, 500, "internal")
+		if strings.Contains(rec.Body.String(), "secret") {
+			t.Errorf("%s leaks error text: %s", path, rec.Body.String())
+		}
+	}
 }

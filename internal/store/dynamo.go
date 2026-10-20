@@ -207,11 +207,11 @@ type pageCursor struct {
 func decodeCursor(c string) (string, error) {
 	b, err := base64.RawURLEncoding.DecodeString(c)
 	if err != nil {
-		return "", fmt.Errorf("invalid cursor: %w", err)
+		return "", fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 	}
 	var pc pageCursor
 	if err := json.Unmarshal(b, &pc); err != nil || pc.ID == "" {
-		return "", fmt.Errorf("invalid cursor")
+		return "", ErrInvalidCursor
 	}
 	return pc.ID, nil
 }

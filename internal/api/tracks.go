@@ -129,8 +129,7 @@ func (s *server) listTracks(w http.ResponseWriter, r *http.Request) {
 	cursor := r.URL.Query().Get("cursor")
 	tracks, next, err := s.Store.ListTracks(r.Context(), limit, cursor)
 	if err != nil {
-		if cursor != "" {
-			// The store reports only that the cursor could not be used.
+		if errors.Is(err, store.ErrInvalidCursor) {
 			badRequest(w, "invalid cursor")
 			return
 		}
