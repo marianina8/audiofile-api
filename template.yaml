@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: audiofile-api
+
+Parameters:
+  IssuerPlaceholder:
+    Type: String
+    Default: https://issuer.example.com
+    Description: JWT issuer URL; replaced by the Cognito user pool reference.
+  AudiencePlaceholder:
+    Type: String
+    Default: placeholder-audience
+    Description: JWT audience; replaced by the Cognito app client references.
+
+Resources:
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Auth:
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Ref IssuerPlaceholder
+              audience:
+                - !Ref AudiencePlaceholder
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: cmd/api/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures: [arm64]
+      Events:
+        GetHealth:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /health
+            Method: GET
+            Auth:
+              Authorizer: NONE
