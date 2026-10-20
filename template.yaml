@@ -1,37 +1,285 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: audiofile-api
+Description: audiofile-api - Cognito, HTTP API, api and processor Lambdas, S3 audio bucket, DynamoDB tables, budget
 
 Parameters:
-  IssuerPlaceholder:
+  AlertEmail:
     Type: String
-    Default: https://issuer.example.com
-    Description: JWT issuer URL; replaced by the Cognito user pool reference.
-  AudiencePlaceholder:
+    NoEcho: true
+    Description: Address for budget alerts. Supplied at deploy time; never committed.
+  CognitoDomainPrefix:
     Type: String
-    Default: placeholder-audience
-    Description: JWT audience; replaced by the Cognito app client references.
+    AllowedPattern: "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+    Description: Prefix for the Cognito hosted domain (<prefix>.auth.<region>.amazoncognito.com).
+
+Globals:
+  Function:
+    Runtime: provided.al2023
+    Architectures: [arm64]
+    Handler: bootstrap
 
 Resources:
+  # ---------- Cognito ----------
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      MfaConfiguration: "OFF"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      Domain: !Ref CognitoDomainPrefix
+      ManagedLoginVersion: 1
+
+  ResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Properties:
+      UserPoolId: !Ref UserPool
+      Identifier: audiofile
+      Name: audiofile
+      Scopes:
+        - ScopeName: read
+          ScopeDescription: Read tracks, catalog and playlists
+        - ScopeName: write
+          ScopeDescription: Upload, edit and delete tracks and playlists
+
+  CliClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+  MachineClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: ResourceServer
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: true
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [client_credentials]
+      AllowedOAuthScopes:
+        - audiofile/read
+        - audiofile/write
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+  McpUsersGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId: !Ref UserPool
+      GroupName: mcp-users
+      Description: Users allowed to sign in to the MCP servers through the OAuth bridge
+
+  # ---------- HTTP API ----------
   HttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 20
+        ThrottlingBurstLimit: 40
       Auth:
+        DefaultAuthorizer: CognitoJwt
         Authorizers:
           CognitoJwt:
             IdentitySource: $request.header.Authorization
             JwtConfiguration:
-              issuer: !Ref IssuerPlaceholder
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
               audience:
-                - !Ref AudiencePlaceholder
+                - !Ref CliClient
+                - !Ref MachineClient
+
+  # ---------- Storage ----------
+  # The bucket name is derived from the stack ID (no account ID) so that function
+  # policies can name it without referencing the bucket, which would be circular:
+  # the bucket's notification depends on ProcessorFunction.
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub
+        - audiofile-audio-${Suffix}
+        - Suffix: !Select [2, !Split ["/", !Ref AWS::StackId]]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpirePlayers
+            Status: Enabled
+            Prefix: players/
+            ExpirationInDays: 1
+
+  TracksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: id, AttributeType: S}
+        - {AttributeName: artist_id, AttributeType: S}
+        - {AttributeName: title, AttributeType: S}
+        - {AttributeName: album_id, AttributeType: S}
+        - {AttributeName: track_number, AttributeType: N}
+      KeySchema:
+        - {AttributeName: id, KeyType: HASH}
+      GlobalSecondaryIndexes:
+        - IndexName: by-artist
+          KeySchema:
+            - {AttributeName: artist_id, KeyType: HASH}
+            - {AttributeName: title, KeyType: RANGE}
+          Projection: {ProjectionType: ALL}
+        - IndexName: by-album
+          KeySchema:
+            - {AttributeName: album_id, KeyType: HASH}
+            - {AttributeName: track_number, KeyType: RANGE}
+          Projection: {ProjectionType: ALL}
+
+  ArtistsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: id, AttributeType: S}
+      KeySchema:
+        - {AttributeName: id, KeyType: HASH}
+
+  AlbumsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: id, AttributeType: S}
+        - {AttributeName: artist_id, AttributeType: S}
+        - {AttributeName: year, AttributeType: N}
+      KeySchema:
+        - {AttributeName: id, KeyType: HASH}
+      GlobalSecondaryIndexes:
+        - IndexName: by-artist
+          KeySchema:
+            - {AttributeName: artist_id, KeyType: HASH}
+            - {AttributeName: year, KeyType: RANGE}
+          Projection: {ProjectionType: ALL}
+
+  PlaylistsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: id, AttributeType: S}
+      KeySchema:
+        - {AttributeName: id, KeyType: HASH}
+
+  # ---------- Functions ----------
+  FFmpegLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      Description: Static ffmpeg and ffprobe (arm64) in /opt/bin
+      ContentUri: layers/ffmpeg/
+      CompatibleArchitectures: [arm64]
+      CompatibleRuntimes: [provided.al2023]
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: makefile
+      BuildArchitecture: arm64
+
+  ProcessorFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      CodeUri: .
+      MemorySize: 1024
+      Timeout: 60
+      Layers:
+        - !Ref FFmpegLayer
+      Environment:
+        Variables:
+          TRACKS_TABLE: !Ref TracksTable
+          ARTISTS_TABLE: !Ref ArtistsTable
+          ALBUMS_TABLE: !Ref AlbumsTable
+          BUCKET: !Sub
+            - audiofile-audio-${Suffix}
+            - Suffix: !Select [2, !Split ["/", !Ref AWS::StackId]]
+          FFMPEG_PATH: /opt/bin/ffmpeg
+          FFPROBE_PATH: /opt/bin/ffprobe
+      Policies:
+        - DynamoDBCrudPolicy: {TableName: !Ref TracksTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref ArtistsTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref AlbumsTable}
+        - Statement:
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub
+                - arn:${AWS::Partition}:s3:::audiofile-audio-${Suffix}/tracks/*
+                - Suffix: !Select [2, !Split ["/", !Ref AWS::StackId]]
+      Events:
+        TrackUploaded:
+          Type: S3
+          Properties:
+            Bucket: !Ref Bucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: tracks/
+                  - Name: suffix
+                    Value: .mp3
 
   ApiFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
     Properties:
-      CodeUri: cmd/api/
-      Handler: bootstrap
-      Runtime: provided.al2023
-      Architectures: [arm64]
+      CodeUri: .
+      MemorySize: 256
+      Timeout: 15
+      Environment:
+        Variables:
+          TRACKS_TABLE: !Ref TracksTable
+          ARTISTS_TABLE: !Ref ArtistsTable
+          ALBUMS_TABLE: !Ref AlbumsTable
+          PLAYLISTS_TABLE: !Ref PlaylistsTable
+          BUCKET: !Ref Bucket
+      Policies:
+        - DynamoDBCrudPolicy: {TableName: !Ref TracksTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref ArtistsTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref AlbumsTable}
+        - DynamoDBCrudPolicy: {TableName: !Ref PlaylistsTable}
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+                - s3:DeleteObject
+              Resource:
+                - !Sub arn:${AWS::Partition}:s3:::${Bucket}/tracks/*
+                - !Sub arn:${AWS::Partition}:s3:::${Bucket}/players/*
       Events:
         GetHealth:
           Type: HttpApi
@@ -393,3 +641,60 @@ Resources:
               AuthorizationScopes:
                 - audiofile/read
                 - aws.cognito.signin.user.admin
+
+  # ---------- Cost guard ----------
+  Budget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: audiofile-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: 10
+          Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref AlertEmail
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the HTTP API (default execute-api endpoint)
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
+    Export: {Name: audiofile-api-ApiUrl}
+  UserPoolId:
+    Value: !Ref UserPool
+    Export: {Name: audiofile-api-UserPoolId}
+  CliClientId:
+    Description: No-secret app client for USER_PASSWORD_AUTH (scripts/token.sh)
+    Value: !Ref CliClient
+    Export: {Name: audiofile-api-CliClientId}
+  MachineClientId:
+    Description: client_credentials app client used by MCP servers
+    Value: !Ref MachineClient
+    Export: {Name: audiofile-api-MachineClientId}
+  CognitoDomain:
+    Description: Base URL of the Cognito domain (token endpoint is <CognitoDomain>/oauth2/token)
+    Value: !Sub https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com
+    Export: {Name: audiofile-api-CognitoDomain}
+  BucketName:
+    Value: !Ref Bucket
+    Export: {Name: audiofile-api-BucketName}
+  IssuerUrl:
+    Description: JWT issuer of the user pool
+    Value: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+    Export: {Name: audiofile-api-IssuerUrl}

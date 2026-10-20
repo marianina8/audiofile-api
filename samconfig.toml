@@ -1,0 +1,15 @@
+# SAM CLI configuration. Holds no emails, account IDs or secrets: AlertEmail and
+# CognitoDomainPrefix are passed at deploy time via --parameter-overrides.
+version = 0.1
+
+[default.global.parameters]
+stack_name = "audiofile-api"
+region = "us-west-2"
+
+[default.build.parameters]
+cached = false
+
+[default.deploy.parameters]
+resolve_s3 = true
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true

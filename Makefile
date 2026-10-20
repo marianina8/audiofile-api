@@ -1,4 +1,6 @@
-.PHONY: test test-dynamo lint-spec build layer
+.PHONY: test test-dynamo lint-spec build layer validate build-ApiFunction build-ProcessorFunction
+
+LAMBDA_GO := GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags lambda.norpc -trimpath -ldflags="-s -w"
 
 test:
 	go test ./...
@@ -19,8 +21,21 @@ test-dynamo:
 lint-spec:
 	npx --yes @redocly/cli@latest lint openapi.yaml
 
-build:
+# sam build runs the build-<LogicalId> targets below (BuildMethod: makefile)
+# and layers/ffmpeg/Makefile for FFmpegLayer.
+build: validate
 	sam build -t template.yaml
 
+validate:
+	sam validate --lint -t template.yaml
+
+# Downloads (once, cached and checksum-verified) the pinned static ffmpeg build
+# and puts ffmpeg/ffprobe in layers/ffmpeg/bin/ (git-ignored).
 layer:
-	@echo "layer: filled in by T15"
+	$(MAKE) -C layers/ffmpeg build-FFmpegLayer ARTIFACTS_DIR=$(CURDIR)/layers/ffmpeg
+
+build-ApiFunction:
+	$(LAMBDA_GO) -o $(ARTIFACTS_DIR)/bootstrap ./cmd/api
+
+build-ProcessorFunction:
+	$(LAMBDA_GO) -o $(ARTIFACTS_DIR)/bootstrap ./cmd/processor

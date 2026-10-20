@@ -318,3 +318,56 @@ func resolveParamName(comps, p *yaml.Node) string {
 	}
 	return scalar(child(p, "name"))
 }
+
+// resource returns the Properties node of a named template resource.
+func resource(tpl *yaml.Node, name string) *yaml.Node {
+	return child(child(child(tpl, "Resources"), name), "Properties")
+}
+
+func TestTemplateSecurity(t *testing.T) {
+	tpl := readYAML(t, "../../template.yaml")
+
+	cfg := child(resource(tpl, "UserPool"), "AdminCreateUserConfig")
+	if got := scalar(child(cfg, "AllowAdminCreateUserOnly")); got != "true" {
+		t.Errorf("UserPool AllowAdminCreateUserOnly = %q, want true", got)
+	}
+
+	pab := child(resource(tpl, "Bucket"), "PublicAccessBlockConfiguration")
+	for _, flag := range []string{"BlockPublicAcls", "BlockPublicPolicy", "IgnorePublicAcls", "RestrictPublicBuckets"} {
+		if got := scalar(child(pab, flag)); got != "true" {
+			t.Errorf("Bucket %s = %q, want true", flag, got)
+		}
+	}
+
+	limit := child(child(resource(tpl, "Budget"), "Budget"), "BudgetLimit")
+	if got := scalar(child(limit, "Amount")); got != "10" {
+		t.Errorf("Budget limit = %q, want 10", got)
+	}
+	if got := scalar(child(limit, "Unit")); got != "USD" {
+		t.Errorf("Budget unit = %q, want USD", got)
+	}
+
+	route := child(resource(tpl, "HttpApi"), "DefaultRouteSettings")
+	if got := scalar(child(route, "ThrottlingRateLimit")); got != "20" {
+		t.Errorf("ThrottlingRateLimit = %q, want 20", got)
+	}
+	if got := scalar(child(route, "ThrottlingBurstLimit")); got != "40" {
+		t.Errorf("ThrottlingBurstLimit = %q, want 40", got)
+	}
+
+	raw, err := os.ReadFile("../../template.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := regexp.MustCompile(`(^|\D)\d{12}(\D|$)`).Find(raw); m != nil {
+		t.Errorf("template.yaml contains a 12-digit number (account ID?): %q", m)
+	}
+
+	cfgFile, err := os.ReadFile("../../samconfig.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(cfgFile), "@") {
+		t.Error("samconfig.toml must not contain an email address")
+	}
+}
