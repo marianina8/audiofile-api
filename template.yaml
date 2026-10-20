@@ -250,3 +250,102 @@ Resources:
               AuthorizationScopes:
                 - audiofile/write
                 - aws.cognito.signin.user.admin
+        CreatePlaylist:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /playlists
+            Method: POST
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/write
+                - aws.cognito.signin.user.admin
+        ListPlaylists:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /playlists
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        GetPlaylist:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /playlists/{id}
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        UpdatePlaylist:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /playlists/{id}
+            Method: PATCH
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/write
+                - aws.cognito.signin.user.admin
+        DeletePlaylist:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /playlists/{id}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/write
+                - aws.cognito.signin.user.admin
+        ListPlaylistTracks:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /playlists/{id}/tracks
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        AddPlaylistTracks:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /playlists/{id}/tracks
+            Method: POST
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/write
+                - aws.cognito.signin.user.admin
+        RemovePlaylistTrack:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /playlists/{id}/tracks/{trackId}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/write
+                - aws.cognito.signin.user.admin
+        ReorderPlaylistTracks:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /playlists/{id}/tracks/order
+            Method: PUT
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/write
+                - aws.cognito.signin.user.admin
