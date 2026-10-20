@@ -1,6 +1,6 @@
 # audiofile-api — design
 
-Date: 2026-10-20 · Status: draft for approval
+Date: 2026-10-20 · Status: approved by Marian 2026-10-20
 
 ## 1. Intent
 
@@ -37,6 +37,7 @@ Anti-goals (failure even if it "works")
 
 - Go; AWS SAM; Lambda `provided.al2023` arm64. Local default region is `us-west-2` (confirm at first deploy, along with which AWS CLI profile to use).
 - No AWS action, paid resource, or browser step without asking first (see §13).
+- AWS identity (decided by Marian): never use the root user. All AWS work runs as a new identity named `audiofile-admin`, created together with Marian before any deploy, used through an AWS CLI profile of the same name. Preferred: short-lived credentials (IAM Identity Center user, or IAM user with MFA and no long-lived keys if Identity Center isn't available); permissions limited to the services these stacks use (CloudFormation, Lambda, API Gateway, Cognito, DynamoDB, S3, IAM roles for the stacks, SSM, Budgets, CloudWatch Logs, KMS only if the fallback is approved). Exact mechanism is chosen with Marian at that step.
 - Commit after every task.
 - Lambda request payload limit ≈ 6 MB (affects legacy `POST /upload`).
 - API Gateway HTTP API does not stream responses and does not allow customizing its 401 response.
@@ -289,7 +290,8 @@ LEARN-MCP lab (after the test server is deployed; stop before each step, Marian 
 
 ## 13. Stop and ask
 
-- Before the first `sam deploy` (show what will be created; confirm region and AWS profile; ask for the budget email) and before any deploy that adds paid resources (e.g. the KMS fallback).
+- Before creating the `audiofile-admin` identity (done together).
+- Before the first `sam deploy` (show what will be created; confirm region; ask for the budget email) and before any deploy that adds paid resources (e.g. the KMS fallback).
 - When Marian must set her Cognito password, sign in in a browser, copy ChatGPT's callback, or run TEST-APPROVALS.md.
 - Before each LEARN-MCP step.
 - Before seeding (after the ffprobe table).
