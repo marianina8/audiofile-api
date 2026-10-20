@@ -19,3 +19,6 @@ layers/ffmpeg/bin/
 .env
 .env.*
 samconfig.local.toml
+
+# Superpowers SDD scratch
+.superpowers/
