@@ -41,3 +41,80 @@ Resources:
             Method: GET
             Auth:
               Authorizer: NONE
+        CreateTrackUpload:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /tracks/uploads
+            Method: POST
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/write
+                - aws.cognito.signin.user.admin
+        ListTracks:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /tracks
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        GetTrack:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /tracks/{id}
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        UpdateTrack:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /tracks/{id}
+            Method: PATCH
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/write
+                - aws.cognito.signin.user.admin
+        DeleteTrack:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /tracks/{id}
+            Method: DELETE
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/write
+                - aws.cognito.signin.user.admin
+        GetTrackStream:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /tracks/{id}/stream
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin
+        GetTrackStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /tracks/{id}/status
+            Method: GET
+            Auth:
+              Authorizer: CognitoJwt
+              AuthorizationScopes:
+                - audiofile/read
+                - aws.cognito.signin.user.admin

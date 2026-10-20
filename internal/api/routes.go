@@ -13,5 +13,12 @@ type Route struct {
 func Routes() []Route {
 	return []Route{
 		{Method: "GET", Path: "/health"},
+		{Method: "POST", Path: "/tracks/uploads", Scope: "audiofile/write"},
+		{Method: "GET", Path: "/tracks", Scope: "audiofile/read"},
+		{Method: "GET", Path: "/tracks/{id}", Scope: "audiofile/read"},
+		{Method: "PATCH", Path: "/tracks/{id}", Scope: "audiofile/write"},
+		{Method: "DELETE", Path: "/tracks/{id}", Scope: "audiofile/write"},
+		{Method: "GET", Path: "/tracks/{id}/stream", Scope: "audiofile/read"},
+		{Method: "GET", Path: "/tracks/{id}/status", Scope: "audiofile/read"},
 	}
 }

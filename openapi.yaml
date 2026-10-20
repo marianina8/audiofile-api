@@ -21,7 +21,328 @@ paths:
                   status:
                     type: string
                     example: ok
+  /tracks/uploads:
+    post:
+      operationId: createTrackUpload
+      summary: Start a track upload
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filename, size_bytes]
+              properties:
+                filename:
+                  type: string
+                  example: song.mp3
+                size_bytes:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                  maximum: 52428800
+                content_sha256:
+                  type: string
+                content_type:
+                  type: string
+                  enum: [audio/mpeg]
+      responses:
+        "201":
+          description: The track was created; PUT the file to upload_url.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  track_id:
+                    type: string
+                  upload_url:
+                    type: string
+                  upload_method:
+                    type: string
+                    enum: [PUT]
+                  upload_headers:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+        "400":
+          description: The request is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /tracks:
+    get:
+      operationId: listTracks
+      summary: List tracks
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of tracks.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Track"
+                  next_cursor:
+                    type: string
+        "400":
+          description: The limit or cursor is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /tracks/{id}:
+    get:
+      operationId: getTrack
+      summary: Get a track
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/trackId"
+      responses:
+        "200":
+          description: The track.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Track"
+        "404":
+          description: No such track.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: updateTrack
+      summary: Update a track
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/trackId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                title:
+                  type: string
+                artist:
+                  type: string
+                album:
+                  type: string
+                genre:
+                  type: string
+                year:
+                  type: integer
+                  minimum: 0
+                lyrics:
+                  type: string
+                bpm:
+                  type: number
+                  minimum: 20
+                  maximum: 300
+      responses:
+        "200":
+          description: The updated track.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Track"
+        "400":
+          description: The request is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such track.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: deleteTrack
+      summary: Delete a track
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/trackId"
+      responses:
+        "204":
+          description: The track was deleted.
+        "404":
+          description: No such track.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /tracks/{id}/stream:
+    get:
+      operationId: getTrackStream
+      summary: Get a stream URL
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/trackId"
+      responses:
+        "200":
+          description: A presigned URL for the audio.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+        "404":
+          description: No such track.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /tracks/{id}/status:
+    get:
+      operationId: getTrackStatus
+      summary: Get processing status
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/trackId"
+      responses:
+        "200":
+          description: The processing status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  status:
+                    $ref: "#/components/schemas/TrackStatus"
+                  error:
+                    type: string
+        "404":
+          description: No such track.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
+  parameters:
+    trackId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              enum: [bad_request, not_found, payload_too_large, internal]
+            message:
+              type: string
+    TrackStatus:
+      type: string
+      enum: [processing, ready, failed]
+    Track:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          $ref: "#/components/schemas/TrackStatus"
+        error:
+          type: string
+        title:
+          type: string
+        artist:
+          type: string
+        artist_id:
+          type: string
+        album:
+          type: string
+        album_id:
+          type: string
+        track_number:
+          type: integer
+        album_artist:
+          type: string
+        composer:
+          type: string
+        comment:
+          type: string
+        genre:
+          type: string
+        year:
+          type: integer
+        lyrics:
+          type: string
+        copyright:
+          type: string
+        bpm:
+          type: number
+        bpm_source:
+          type: string
+          enum: [tag, measured, manual]
+        energy:
+          type: number
+        duration_seconds:
+          type: number
+        s3_key:
+          type: string
+        original_filename:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+        content_sha256:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
   securitySchemes:
     bearerAuth:
       type: http

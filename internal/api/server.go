@@ -24,7 +24,14 @@ type server struct {
 func New(d Deps) http.Handler {
 	s := &server{Deps: d}
 	handlers := map[string]http.HandlerFunc{
-		"GET /health": s.health,
+		"GET /health":             s.health,
+		"POST /tracks/uploads":    s.createTrackUpload,
+		"GET /tracks":             s.listTracks,
+		"GET /tracks/{id}":        s.getTrack,
+		"PATCH /tracks/{id}":      s.updateTrack,
+		"DELETE /tracks/{id}":     s.deleteTrack,
+		"GET /tracks/{id}/stream": s.getTrackStream,
+		"GET /tracks/{id}/status": s.getTrackStatus,
 	}
 
 	mux := http.NewServeMux()
