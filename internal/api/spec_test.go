@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -216,4 +217,104 @@ func TestRoutesUnique(t *testing.T) {
 		}
 		seen[k] = true
 	}
+}
+
+// successCodes is the success status each handler writes.
+var successCodes = map[opKey]string{
+	{"POST", "/tracks/uploads"}:                    "201",
+	{"DELETE", "/tracks/{id}"}:                     "204",
+	{"DELETE", "/tracks/{id}/tags/{tag}"}:          "204",
+	{"POST", "/playlists"}:                         "201",
+	{"DELETE", "/playlists/{id}"}:                  "204",
+	{"DELETE", "/playlists/{id}/tracks/{trackId}"}: "204",
+	{"POST", "/playlists/{id}/player"}:             "201",
+}
+
+func enumValues(n *yaml.Node) []string {
+	var out []string
+	if e := child(n, "enum"); e != nil {
+		for _, v := range e.Content {
+			out = append(out, v.Value)
+		}
+	}
+	return out
+}
+
+func TestSpecResponses(t *testing.T) {
+	spec := readYAML(t, "../../openapi.yaml")
+	paths := child(spec, "paths")
+	comps := child(spec, "components")
+	if paths == nil || comps == nil {
+		t.Fatal("openapi.yaml needs paths and components")
+	}
+	for _, name := range []string{"Unauthorized", "NotFound", "BadRequest"} {
+		if child(child(comps, "responses"), name) == nil {
+			t.Errorf("components/responses/%s is missing", name)
+		}
+	}
+	pathParam := regexp.MustCompile(`\{([^}]+)\}`)
+
+	for i := 0; i+1 < len(paths.Content); i += 2 {
+		path, item := paths.Content[i].Value, paths.Content[i+1]
+		for j := 0; j+1 < len(item.Content); j += 2 {
+			m := item.Content[j].Value
+			if !httpMethods[m] {
+				continue
+			}
+			op := item.Content[j+1]
+			k := opKey{strings.ToUpper(m), path}
+			resp := child(op, "responses")
+
+			want := successCodes[k]
+			if want == "" {
+				want = "200"
+			}
+			if child(resp, want) == nil {
+				t.Errorf("%s: missing success response %s", k, want)
+			}
+			if path != "/health" && child(resp, "401") == nil {
+				t.Errorf("%s: missing 401 response", k)
+			}
+
+			declared := map[string]bool{}
+			if ps := child(item, "parameters"); ps != nil {
+				for _, p := range ps.Content {
+					declared[resolveParamName(comps, p)] = true
+				}
+			}
+			if ps := child(op, "parameters"); ps != nil {
+				for _, p := range ps.Content {
+					if scalar(child(p, "in")) == "path" || child(p, "$ref") != nil {
+						declared[resolveParamName(comps, p)] = true
+					}
+				}
+			}
+			for _, mm := range pathParam.FindAllStringSubmatch(path, -1) {
+				if !declared[mm[1]] {
+					t.Errorf("%s: path parameter %q is not declared", k, mm[1])
+				}
+			}
+		}
+	}
+
+	schemas := child(comps, "schemas")
+	if got, want := enumValues(child(schemas, "TrackStatus")), []string{"processing", "ready", "failed"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("TrackStatus enum = %v, want %v", got, want)
+	}
+	track := child(child(schemas, "Track"), "properties")
+	if got, want := enumValues(child(track, "bpm_source")), []string{"tag", "measured", "manual"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Track.bpm_source enum = %v, want %v", got, want)
+	}
+	status := child(track, "status")
+	if ref := scalar(child(status, "$ref")); ref != "#/components/schemas/TrackStatus" {
+		t.Errorf("Track.status = %q, want a ref to TrackStatus", ref)
+	}
+}
+
+// resolveParamName returns the name of a parameter, following a components ref.
+func resolveParamName(comps, p *yaml.Node) string {
+	if ref := scalar(child(p, "$ref")); ref != "" {
+		return scalar(child(child(child(comps, "parameters"), strings.TrimPrefix(ref, "#/components/parameters/")), "name"))
+	}
+	return scalar(child(p, "name"))
 }

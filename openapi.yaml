@@ -2,6 +2,9 @@ openapi: 3.1.0
 info:
   title: audiofile-api
   version: 1.0.0
+  license:
+    name: MIT
+    identifier: MIT
 servers:
   - url: https://api.example.com
 paths:
@@ -33,7 +36,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [filename, size_bytes]
+              required: [ filename, size_bytes ]
               properties:
                 filename:
                   type: string
@@ -47,7 +50,7 @@ paths:
                   type: string
                 content_type:
                   type: string
-                  enum: [audio/mpeg]
+                  enum: [ audio/mpeg ]
       responses:
         "201":
           description: The track was created; PUT the file to upload_url.
@@ -62,7 +65,7 @@ paths:
                     type: string
                   upload_method:
                     type: string
-                    enum: [PUT]
+                    enum: [ PUT ]
                   upload_headers:
                     type: object
                     additionalProperties:
@@ -71,11 +74,9 @@ paths:
                     type: string
                     format: date-time
         "400":
-          description: The request is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /tracks:
     get:
       operationId: listTracks
@@ -109,11 +110,9 @@ paths:
                   next_cursor:
                     type: string
         "400":
-          description: The limit or cursor is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /tracks/{id}:
     get:
       operationId: getTrack
@@ -129,12 +128,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Track"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No such track.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFound"
     patch:
       operationId: updateTrack
       summary: Update a track
@@ -177,17 +174,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/Track"
         "400":
-          description: The request is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No such track.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteTrack
       summary: Delete a track
@@ -198,12 +189,10 @@ paths:
       responses:
         "204":
           description: The track was deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No such track.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFound"
   /tracks/{id}/stream:
     get:
       operationId: getTrackStream
@@ -225,12 +214,10 @@ paths:
                   expires_at:
                     type: string
                     format: date-time
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No such track.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFound"
   /tracks/{id}/status:
     get:
       operationId: getTrackStatus
@@ -253,12 +240,10 @@ paths:
                     $ref: "#/components/schemas/TrackStatus"
                   error:
                     type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No such track.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFound"
   /search:
     get:
       operationId: searchTracks
@@ -318,11 +303,9 @@ paths:
                     items:
                       $ref: "#/components/schemas/Track"
         "400":
-          description: A parameter is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /artists:
     get:
       operationId: listArtists
@@ -341,6 +324,8 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Artist"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /artists/{id}:
     get:
       operationId: getArtist
@@ -361,12 +346,10 @@ paths:
                     properties:
                       album_count:
                         type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No such artist.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFound"
   /artists/{id}/tracks:
     get:
       operationId: listArtistTracks
@@ -387,12 +370,10 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Track"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No such artist.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFound"
   /artists/{id}/albums:
     get:
       operationId: listArtistAlbums
@@ -413,12 +394,10 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Album"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No such artist.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFound"
   /albums:
     get:
       operationId: listAlbums
@@ -437,6 +416,8 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Album"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /albums/{id}:
     get:
       operationId: getAlbum
@@ -452,12 +433,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Album"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No such album.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFound"
   /albums/{id}/tracks:
     get:
       operationId: listAlbumTracks
@@ -478,12 +457,10 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Track"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No such album.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFound"
   /genres:
     get:
       operationId: listGenres
@@ -502,6 +479,8 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/NameCount"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /tags:
     get:
       operationId: listTags
@@ -520,6 +499,8 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/NameCount"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /tracks/{id}/tags:
     post:
       operationId: addTrackTags
@@ -535,7 +516,7 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [tags]
+              required: [ tags ]
               properties:
                 tags:
                   type: array
@@ -552,17 +533,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/Track"
         "400":
-          description: A parameter is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No such track.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFound"
   /tracks/{id}/tags/{tag}:
     delete:
       operationId: removeTrackTag
@@ -580,276 +555,244 @@ paths:
         "204":
           description: The tag was removed.
         "400":
-          description: A parameter is invalid.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No such track, or the track does not have that tag.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFound"
   /playlists:
-      post:
-        operationId: createPlaylist
-        summary: Create a playlist
-        security:
-          - bearerAuth: []
-        requestBody:
-          required: true
-          content:
-            application/json:
-              schema:
-                  type: object
-                  required: [name]
-                  properties:
-                    name:
-                      type: string
-                      maxLength: 200
-                    description:
-                      type: string
-                      maxLength: 2000
-                    track_ids:
-                      type: array
-                      items:
-                        type: string
-        responses:
-          "201":
-            description: The new playlist.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Playlist"
-          "400":
-            description: The name is blank or a track id is unknown or not ready.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Error"
-      get:
-        operationId: listPlaylists
-        summary: List playlists
-        security:
-          - bearerAuth: []
-        responses:
-          "200":
-            description: Playlists, oldest first.
-            content:
-              application/json:
-                schema:
-                  type: object
-                  properties:
-                    items:
-                      type: array
-                      items:
-                        $ref: "#/components/schemas/PlaylistSummary"
-  /playlists/{id}:
-      get:
-        operationId: getPlaylist
-        summary: Get a playlist
-        security:
-          - bearerAuth: []
-        parameters:
-          - $ref: "#/components/parameters/playlistId"
-        responses:
-          "200":
-            description: The playlist.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Playlist"
-          "404":
-            description: No such playlist.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Error"
-      patch:
-        operationId: updatePlaylist
-        summary: Update a playlist
-        security:
-          - bearerAuth: []
-        parameters:
-          - $ref: "#/components/parameters/playlistId"
-        requestBody:
-          required: true
-          content:
-            application/json:
-              schema:
-                  type: object
-                  properties:
-                    name:
-                      type: string
-                      maxLength: 200
-                    description:
-                      type: string
-                      maxLength: 2000
-        responses:
-          "200":
-            description: The updated playlist.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Playlist"
-          "400":
-            description: No fields given, or a value is invalid.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Error"
-          "404":
-            description: No such playlist.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Error"
-      delete:
-        operationId: deletePlaylist
-        summary: Delete a playlist
-        security:
-          - bearerAuth: []
-        parameters:
-          - $ref: "#/components/parameters/playlistId"
-        responses:
-          "204":
-            description: The playlist was deleted.
-          "404":
-            description: No such playlist.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Error"
-  /playlists/{id}/tracks:
-      get:
-        operationId: listPlaylistTracks
-        summary: List a playlist's tracks
-        security:
-          - bearerAuth: []
-        parameters:
-          - $ref: "#/components/parameters/playlistId"
-        responses:
-          "200":
-            description: The tracks, in play order.
-            content:
-              application/json:
-                schema:
-                  type: object
-                  properties:
-                    items:
-                      type: array
-                      items:
-                        $ref: "#/components/schemas/Track"
-          "404":
-            description: No such playlist.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Error"
-      post:
-        operationId: addPlaylistTracks
-        summary: Add tracks to a playlist
-        security:
-          - bearerAuth: []
-        parameters:
-          - $ref: "#/components/parameters/playlistId"
-        requestBody:
-          required: true
-          content:
-            application/json:
-              schema:
-                  type: object
-                  required: [track_ids]
-                  properties:
-                    track_ids:
-                      type: array
-                      minItems: 1
-                      items:
-                        type: string
-                    position:
-                      type: integer
-                      minimum: 0
-        responses:
-          "200":
-            description: The updated playlist.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Playlist"
-          "400":
-            description: A track id is unknown or not ready, or position is negative.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Error"
-          "404":
-            description: No such playlist.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Error"
-  /playlists/{id}/tracks/order:
-      put:
-        operationId: reorderPlaylistTracks
-        summary: Reorder a playlist's tracks
-        security:
-          - bearerAuth: []
-        parameters:
-          - $ref: "#/components/parameters/playlistId"
-        requestBody:
-          required: true
-          content:
-            application/json:
-              schema:
-                  type: object
-                  required: [track_ids]
-                  properties:
-                    track_ids:
-                      type: array
-                      items:
-                        type: string
-        responses:
-          "200":
-            description: The updated playlist.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Playlist"
-          "400":
-            description: track_ids is not a permutation of the playlist's tracks.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Error"
-          "404":
-            description: No such playlist.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Error"
-  /playlists/{id}/tracks/{trackId}:
-      delete:
-        operationId: removePlaylistTrack
-        summary: Remove a track from a playlist
-        security:
-          - bearerAuth: []
-        parameters:
-          - $ref: "#/components/parameters/playlistId"
-          - name: trackId
-            in: path
-            required: true
+    post:
+      operationId: createPlaylist
+      summary: Create a playlist
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
             schema:
-              type: string
-        responses:
-          "204":
-            description: The track was removed.
-          "404":
-            description: No such playlist, or the track is not in it.
-            content:
-              application/json:
-                schema:
-                  $ref: "#/components/schemas/Error"
+              type: object
+              required: [ name ]
+              properties:
+                name:
+                  type: string
+                  maxLength: 200
+                description:
+                  type: string
+                  maxLength: 2000
+                track_ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "201":
+          description: The new playlist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    get:
+      operationId: listPlaylists
+      summary: List playlists
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Playlists, oldest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PlaylistSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /playlists/{id}:
+    get:
+      operationId: getPlaylist
+      summary: Get a playlist
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/playlistId"
+      responses:
+        "200":
+          description: The playlist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updatePlaylist
+      summary: Update a playlist
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/playlistId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 200
+                description:
+                  type: string
+                  maxLength: 2000
+      responses:
+        "200":
+          description: The updated playlist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deletePlaylist
+      summary: Delete a playlist
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/playlistId"
+      responses:
+        "204":
+          description: The playlist was deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /playlists/{id}/tracks:
+    get:
+      operationId: listPlaylistTracks
+      summary: List a playlist's tracks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/playlistId"
+      responses:
+        "200":
+          description: The tracks, in play order.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Track"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: addPlaylistTracks
+      summary: Add tracks to a playlist
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/playlistId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ track_ids ]
+              properties:
+                track_ids:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                position:
+                  type: integer
+                  minimum: 0
+      responses:
+        "200":
+          description: The updated playlist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /playlists/{id}/tracks/order:
+    put:
+      operationId: reorderPlaylistTracks
+      summary: Reorder a playlist's tracks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/playlistId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ track_ids ]
+              properties:
+                track_ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: The updated playlist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /playlists/{id}/tracks/{trackId}:
+    delete:
+      operationId: removePlaylistTrack
+      summary: Remove a track from a playlist
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/playlistId"
+        - name: trackId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: The track was removed.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /playlists/{id}/player:
     post:
       operationId: createPlaylistPlayer
@@ -865,7 +808,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [url, expires_at]
+                required: [ url, expires_at ]
                 properties:
                   url:
                     type: string
@@ -873,17 +816,11 @@ paths:
                     type: string
                     format: date-time
         "400":
-          description: The playlist has no playable tracks.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No such playlist.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFound"
   /upload:
     post:
       operationId: uploadAudio
@@ -896,7 +833,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [file]
+              required: [ file ]
               properties:
                 file:
                   type: string
@@ -909,11 +846,9 @@ paths:
               schema:
                 type: string
         "400":
-          description: Missing file, or the file is not an .mp3.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "413":
           description: The file is larger than 4500000 bytes.
           content:
@@ -940,17 +875,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/Audio"
         "400":
-          description: Missing id.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: No such audio.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/NotFound"
   /list:
     get:
       operationId: listAudio
@@ -966,7 +895,22 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Audio"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 components:
+  responses:
+    BadRequest:
+      description: Bad request
+      content: &a1
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Unauthorized
+      content: *a1
+    NotFound:
+      description: Not found
+      content: *a1
   parameters:
     playlistId:
       name: id
@@ -1001,7 +945,7 @@ components:
           properties:
             code:
               type: string
-              enum: [bad_request, not_found, payload_too_large, internal]
+              enum: [ bad_request, not_found, payload_too_large, internal ]
             message:
               type: string
     Audio:
@@ -1045,7 +989,7 @@ components:
             type: string
     TrackStatus:
       type: string
-      enum: [processing, ready, failed]
+      enum: [ processing, ready, failed ]
     Track:
       type: object
       properties:
@@ -1085,7 +1029,7 @@ components:
           type: number
         bpm_source:
           type: string
-          enum: [tag, measured, manual]
+          enum: [ tag, measured, manual ]
         energy:
           type: number
         duration_seconds:

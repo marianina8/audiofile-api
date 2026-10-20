@@ -1,0 +1,7 @@
+extends:
+  - recommended
+rules:
+  # The placeholder server URL is intentional until a real host is known.
+  no-server-example.com: off
+  # GET /health is public and takes no input, so it has no 4XX response.
+  operation-4xx-response: off
