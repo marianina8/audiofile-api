@@ -104,8 +104,9 @@ func Handle(ctx context.Context, v *jwtverify.Verifier, req events.APIGatewayCus
 		return policy("unknown", "Deny", []string{req.MethodArn}), nil
 	}
 
+	// Same rule as the gateway's IdentityValidationExpression ^[Bb]earer ...
 	scheme, token, ok := strings.Cut(req.AuthorizationToken, " ")
-	if !ok || !strings.EqualFold(scheme, "Bearer") || strings.TrimSpace(token) == "" {
+	if !ok || (scheme != "Bearer" && scheme != "bearer") || strings.TrimSpace(token) == "" {
 		outcome("unauthorized", "missing_token")
 		return events.APIGatewayCustomAuthorizerResponse{}, errUnauthorized
 	}

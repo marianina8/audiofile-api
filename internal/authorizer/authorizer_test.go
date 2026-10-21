@@ -146,6 +146,7 @@ func TestUnauthorized(t *testing.T) {
 		"missing":        "",
 		"no scheme":      good,
 		"wrong scheme":   "Basic " + good,
+		"upper scheme":   "BEARER " + good,
 		"empty bearer":   "Bearer ",
 		"garbage":        "Bearer not-a-jwt",
 		"wrong audience": "Bearer " + mint(t, priv, "https://other.execute-api.us-east-1.amazonaws.com/v1/mcp", []string{"mcp-users"}),
@@ -256,5 +257,16 @@ func TestJWKSOutageIsNotUnauthorized(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), tok) || strings.Contains(logs.String(), tok) {
 		t.Fatal("token leaked")
+	}
+}
+
+func TestLowercaseBearerAllows(t *testing.T) {
+	v, priv := setup(t)
+	resp, err := Handle(context.Background(), v, req("bearer "+mint(t, priv, audience, []string{"mcp-users"}), methodArn))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := effect(t, resp); e != "Allow" {
+		t.Fatalf("effect = %s, want Allow", e)
 	}
 }

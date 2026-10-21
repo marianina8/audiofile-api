@@ -71,9 +71,13 @@ Resources:
       Type: TOKEN
       AuthorizerUri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthorizerFunction.Arn}/invocations
       IdentitySource: method.request.header.Authorization
-      IdentityValidationExpression: "^Bearer [-_A-Za-z0-9.]+$"
+      IdentityValidationExpression: "^[Bb]earer [-_A-Za-z0-9.]+$"
       AuthorizerResultTtlInSeconds: 300
 
+  # Lambda proxy: the event passed to the server still carries the
+  # Authorization header (the bearer token), so MCP servers must never log the
+  # raw event or its headers. Identity is in requestContext.authorizer
+  # (sub, client_id, scope).
   McpMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -153,9 +157,12 @@ Resources:
       ResponseTemplates:
         application/json: '{"error":"forbidden"}'
 
-  # A Deployment is immutable: when methods or gateway responses change,
-  # rename this logical ID (ApiDeploymentV2, ...) so CloudFormation redeploys.
-  ApiDeploymentV1:
+  # A Deployment is an immutable snapshot. Its logical ID ends in a hash of
+  # every API Gateway Method, GatewayResponse, Authorizer and Resource block;
+  # mcphost/template_test.go fails with the new name whenever they change.
+  # Parameter-only changes (BridgeUrl, ServerFunctionArn) don't rename it:
+  # scripts/deploy-mcp.sh creates a fresh deployment after every deploy.
+  ApiDeployment017872ce:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
       - McpMethod
@@ -166,11 +173,14 @@ Resources:
     Properties:
       RestApiId: !Ref Api
 
+  # After the log group, so the first authorizer invocation can't make Lambda
+  # create /aws/lambda/<fn> itself (without retention) and fail this stack.
   ApiStage:
     Type: AWS::ApiGateway::Stage
+    DependsOn: AuthorizerLogGroup
     Properties:
       RestApiId: !Ref Api
-      DeploymentId: !Ref ApiDeploymentV1
+      DeploymentId: !Ref ApiDeployment017872ce
       StageName: v1
       TracingEnabled: false
       MethodSettings:
@@ -239,6 +249,12 @@ Resources:
       Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/v1/mcp
 
 Outputs:
+  ServerName:
+    Description: Server name this host was deployed for
+    Value: !Ref ServerName
+  ApiId:
+    Description: REST API id (scripts/deploy-mcp.sh redeploys stage v1 with it)
+    Value: !Ref Api
   McpUrl:
     Description: MCP server URL (also the token audience and resource server identifier)
     Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/v1/mcp
