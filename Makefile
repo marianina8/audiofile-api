@@ -1,4 +1,4 @@
-.PHONY: test test-dynamo lint-spec build layer validate validate-auth build-auth build-ApiFunction build-ProcessorFunction build-BridgeFunction
+.PHONY: test test-dynamo lint-spec build layer validate validate-auth build-auth validate-mcphost build-mcphost build-ApiFunction build-ProcessorFunction build-BridgeFunction build-AuthorizerFunction
 
 LAMBDA_GO := GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags lambda.norpc -trimpath -ldflags="-s -w"
 
@@ -36,6 +36,13 @@ validate-auth:
 build-auth: validate-auth
 	cd auth && sam build -t template.yaml
 
+# The reusable mcp-host nested app; its AuthorizerFunction builds from the repo root.
+validate-mcphost:
+	sam validate --lint -t mcphost/template.yaml
+
+build-mcphost: validate-mcphost
+	cd mcphost && sam build -t template.yaml
+
 # Copies ffmpeg/ffprobe from the digest-pinned static-ffmpeg image (needs Docker),
 # verifies their checksums and puts them in layers/ffmpeg/bin/ (git-ignored).
 layer:
@@ -49,3 +56,6 @@ build-ProcessorFunction:
 
 build-BridgeFunction:
 	$(LAMBDA_GO) -o $(ARTIFACTS_DIR)/bootstrap ./cmd/mcpauth
+
+build-AuthorizerFunction:
+	$(LAMBDA_GO) -o $(ARTIFACTS_DIR)/bootstrap ./cmd/mcpauthorizer

@@ -1,0 +1,247 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: mcp-host - puts one MCP server Lambda at an HTTPS URL behind the OAuth bridge, with all auth at the gateway (spec §8 B)
+
+# Nested app: the parent stack passes the ServerFunctionArn of its MCP server
+# Lambda plus the values exported by audiofile-api and mcp-auth.
+
+Parameters:
+  ServerName:
+    Type: String
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+    Description: Short server name; names the resource server and the SSM registration.
+  ServerFunctionArn:
+    Type: String
+    Description: ARN of the MCP server Lambda (stateless streamable HTTP).
+  BridgeUrl:
+    Type: String
+    Description: OAuth bridge issuer URL (export audiofile-auth-BridgeUrl).
+  IssuerUrl:
+    Type: String
+    Description: Cognito user pool issuer URL (export audiofile-api-IssuerUrl).
+  UserPoolId:
+    Type: String
+    Description: Cognito user pool id (export audiofile-api-UserPoolId).
+
+Resources:
+  # Raw API Gateway resources rather than AWS::Serverless::Api, so the metadata
+  # documents and the 401 header can name the API's own URL (${Api}) without a
+  # circular reference. The authorizer never references the API: it derives
+  # the audience from the method ARN.
+  Api:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub mcp-host-${ServerName}
+      EndpointConfiguration:
+        Types: [REGIONAL]
+
+  McpResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref Api
+      ParentId: !GetAtt Api.RootResourceId
+      PathPart: mcp
+
+  WellKnownResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref Api
+      ParentId: !GetAtt Api.RootResourceId
+      PathPart: .well-known
+
+  ProtectedResourceResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref Api
+      ParentId: !Ref WellKnownResource
+      PathPart: oauth-protected-resource
+
+  ProtectedResourceMcpResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref Api
+      ParentId: !Ref ProtectedResourceResource
+      PathPart: mcp
+
+  Authorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      RestApiId: !Ref Api
+      Name: !Sub mcp-host-${ServerName}-token
+      Type: TOKEN
+      AuthorizerUri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthorizerFunction.Arn}/invocations
+      IdentitySource: method.request.header.Authorization
+      IdentityValidationExpression: "^Bearer [-_A-Za-z0-9.]+$"
+      AuthorizerResultTtlInSeconds: 300
+
+  McpMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref Api
+      ResourceId: !Ref McpResource
+      HttpMethod: ANY
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref Authorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ServerFunctionArn}/invocations
+
+  # RFC 9728 protected resource metadata. The stage prefix makes a host-root
+  # document impossible, so clients find these via WWW-Authenticate.
+  ProtectedResourceMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref Api
+      ResourceId: !Ref ProtectedResourceResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: "200"
+            ResponseParameters:
+              method.response.header.Content-Type: "'application/json'"
+            ResponseTemplates:
+              application/json: !Sub '{"resource":"https://${Api}.execute-api.${AWS::Region}.amazonaws.com/v1/mcp","authorization_servers":["${BridgeUrl}"],"scopes_supported":["openid","email"],"bearer_methods_supported":["header"]}'
+      MethodResponses:
+        - StatusCode: "200"
+          ResponseParameters:
+            method.response.header.Content-Type: true
+
+  ProtectedResourceMcpMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref Api
+      ResourceId: !Ref ProtectedResourceMcpResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: "200"
+            ResponseParameters:
+              method.response.header.Content-Type: "'application/json'"
+            ResponseTemplates:
+              application/json: !Sub '{"resource":"https://${Api}.execute-api.${AWS::Region}.amazonaws.com/v1/mcp","authorization_servers":["${BridgeUrl}"],"scopes_supported":["openid","email"],"bearer_methods_supported":["header"]}'
+      MethodResponses:
+        - StatusCode: "200"
+          ResponseParameters:
+            method.response.header.Content-Type: true
+
+  UnauthorizedResponse:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref Api
+      ResponseType: UNAUTHORIZED
+      StatusCode: "401"
+      ResponseParameters:
+        gatewayresponse.header.WWW-Authenticate: !Sub '''Bearer resource_metadata="https://${Api}.execute-api.${AWS::Region}.amazonaws.com/v1/.well-known/oauth-protected-resource"'''
+      ResponseTemplates:
+        application/json: '{"error":"unauthorized"}'
+
+  AccessDeniedResponse:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref Api
+      ResponseType: ACCESS_DENIED
+      StatusCode: "403"
+      ResponseTemplates:
+        application/json: '{"error":"forbidden"}'
+
+  # A Deployment is immutable: when methods or gateway responses change,
+  # rename this logical ID (ApiDeploymentV2, ...) so CloudFormation redeploys.
+  ApiDeploymentV1:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - McpMethod
+      - ProtectedResourceMethod
+      - ProtectedResourceMcpMethod
+      - UnauthorizedResponse
+      - AccessDeniedResponse
+    Properties:
+      RestApiId: !Ref Api
+
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref Api
+      DeploymentId: !Ref ApiDeploymentV1
+      StageName: v1
+      TracingEnabled: false
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingRateLimit: 20
+          ThrottlingBurstLimit: 40
+
+  ServerInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ServerFunctionArn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*/*/mcp
+
+  AuthorizerInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AuthorizerFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/authorizers/${Authorizer}
+
+  # TOKEN authorizer: Cognito JWT, iss = the pool, aud = this MCP URL,
+  # group mcp-users. Basic execution role only.
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      CodeUri: ..
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures: [arm64]
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          ISSUER_URL: !Ref IssuerUrl
+
+  AuthorizerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AuthorizerFunction}
+      RetentionInDays: 14
+
+  # Cognito resource binding only sets aud for a registered resource server
+  # whose identifier is exactly the MCP URL (docs/notes/resource-binding.md).
+  ResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Properties:
+      UserPoolId: !Ref UserPoolId
+      Identifier: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/v1/mcp
+      Name: !Ref ServerName
+      Scopes:
+        - ScopeName: access
+          ScopeDescription: MCP access
+
+  # The bridge reads this prefix for allowed resource values.
+  ResourceRegistration:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /audiofile/mcp-resources/${ServerName}
+      Type: String
+      Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/v1/mcp
+
+Outputs:
+  McpUrl:
+    Description: MCP server URL (also the token audience and resource server identifier)
+    Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/v1/mcp
+  ResourceMetadataUrl:
+    Description: RFC 9728 protected resource metadata (the WWW-Authenticate pointer)
+    Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/v1/.well-known/oauth-protected-resource
