@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Usage: scripts/deploy-mcp.sh <server-template-dir>   (e.g. servers/mcptest)
+# Usage: [STACK_NAME=<stack>] [SERVER_NAME=<name>] scripts/deploy-mcp.sh <server-template-dir>
+#        (e.g. servers/mcptest)
 # Builds and deploys the MCP server stack in <dir>. Its template.yaml nests
-# mcphost/template.yaml and its samconfig.toml names the stack. The script
+# mcphost/template.yaml and its samconfig.toml names the stack. STACK_NAME
+# overrides that stack name and SERVER_NAME sets the template's ServerName
+# parameter (for rehearsal stacks; the template must declare ServerName). The script
 # then creates a fresh API Gateway deployment of stage v1 on the nested
 # mcp-host REST API. CloudFormation redeploys the stage only when the API's
 # shape changes (the hashed ApiDeployment logical id), so this step keeps
@@ -20,8 +23,10 @@ usage() { echo "usage: scripts/deploy-mcp.sh <server-template-dir>" >&2; exit 2;
 dir="${1:-}"
 [ -n "$dir" ] && [ -f "$dir/template.yaml" ] || usage
 [ -f "$dir/samconfig.toml" ] || { echo "$dir/samconfig.toml not found (it names the stack)" >&2; exit 1; }
-stack=$(sed -n 's/^[[:space:]]*stack_name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/samconfig.toml" | head -n 1)
+stack="${STACK_NAME:-$(sed -n 's/^[[:space:]]*stack_name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/samconfig.toml" | head -n 1)}"
 [ -n "$stack" ] || { echo "no stack_name in $dir/samconfig.toml" >&2; exit 1; }
+deploy_args=(--stack-name "$stack")
+[ -z "${SERVER_NAME:-}" ] || deploy_args+=(--parameter-overrides "ServerName=$SERVER_NAME")
 
 export AWS_PROFILE="${AWS_PROFILE:-audiofile-admin}"
 export AWS_REGION="${AWS_REGION:-us-west-2}"
@@ -33,7 +38,7 @@ trap '[ "$keep_log" -eq 1 ] || rm -rf "$logdir"' EXIT
 fail() { keep_log=1; echo "$1 failed; log: $log" >&2; exit 1; }
 
 (cd "$dir" && sam build) >"$log" 2>&1 || fail "sam build"
-(cd "$dir" && sam deploy --region "$AWS_REGION" \
+(cd "$dir" && sam deploy --region "$AWS_REGION" "${deploy_args[@]}" \
   --no-confirm-changeset --no-fail-on-empty-changeset) >>"$log" 2>&1 || fail "sam deploy"
 
 # The nested mcp-host stack is the one with an ApiId output.

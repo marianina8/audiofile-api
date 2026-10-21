@@ -1,0 +1,17 @@
+# SAM CLI configuration for the generated MCP server (Server A). No IDs or secrets.
+# Rehearsal without editing this file:
+#   STACK_NAME=mcp-generated-rehearsal SERVER_NAME=audiofile-generated-rehearsal \
+#     scripts/deploy-mcp.sh servers/generated
+version = 0.1
+
+[default.global.parameters]
+stack_name = "mcp-generated"
+region = "us-west-2"
+
+[default.build.parameters]
+cached = false
+
+[default.deploy.parameters]
+resolve_s3 = true
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+confirm_changeset = true

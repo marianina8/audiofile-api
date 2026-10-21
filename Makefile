@@ -1,4 +1,4 @@
-.PHONY: test test-dynamo lint-spec build layer validate validate-auth build-auth validate-mcphost build-mcphost build-ApiFunction build-ProcessorFunction build-BridgeFunction build-AuthorizerFunction build-McpTestFunction validate-mcptest build-mcptest
+.PHONY: test test-dynamo lint-spec build layer validate validate-auth build-auth validate-mcphost build-mcphost build-ApiFunction build-ProcessorFunction build-BridgeFunction build-AuthorizerFunction build-McpTestFunction validate-mcptest build-mcptest validate-generated build-generated
 
 LAMBDA_GO := GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags lambda.norpc -trimpath -ldflags="-s -w"
 
@@ -70,3 +70,12 @@ validate-mcptest:
 
 build-mcptest: validate-mcptest
 	cd servers/mcptest && sam build -t template.yaml
+
+# Server A, generated on camera into servers/generated/app (scripts/generate-server.sh --patch).
+# Its function builds with servers/generated/Makefile; the nested mcp-host
+# AuthorizerFunction builds from the repo root.
+validate-generated:
+	sam validate --lint -t servers/generated/template.yaml
+
+build-generated: validate-generated
+	cd servers/generated && sam build -t template.yaml

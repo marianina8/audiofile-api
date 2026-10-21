@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: mcp-generated - Server A, generated from openapi.yaml by openapi-mcp-generator and patched by scripts/patch-generated-server.sh, behind the reusable mcp-host stack
+
+# app/ is generated on camera (scripts/generate-server.sh --patch) and is not
+# in git. The Node server runs under the Lambda Web Adapter, which turns the
+# API Gateway REST proxy event into a plain HTTP request to localhost:8080.
+
+Parameters:
+  ServerName:
+    Type: String
+    Default: audiofile-generated
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+    Description: mcp-host server name (rehearsals override it, see scripts/deploy-mcp.sh).
+
+Resources:
+  # Receives REST proxy events that carry the caller's bearer token; the
+  # patched server ignores it and calls the API with its own machine token.
+  GeneratedServerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+      ContextPath: .   # servers/generated/Makefile builds the app/ CodeUri
+    Properties:
+      CodeUri: app/
+      Handler: run.sh
+      Runtime: nodejs22.x
+      Architectures: [arm64]
+      MemorySize: 512
+      Timeout: 15
+      Layers:
+        - !Sub arn:aws:lambda:${AWS::Region}:753240598075:layer:LambdaAdapterLayerArm64:30
+      Environment:
+        Variables:
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/bootstrap
+          AWS_LWA_PORT: "8080"
+          AWS_LWA_READINESS_CHECK_PATH: /health
+          # The adapter's lambda_http prefixes REST v1 paths with the stage
+          # (/v1/mcp) unless this is set; the server routes /mcp.
+          AWS_LAMBDA_HTTP_IGNORE_STAGE_IN_PATH: "true"
+          PORT: "8080"
+          API_BASE_URL: !ImportValue audiofile-api-ApiUrl
+          MACHINE_CLIENT_ID: !ImportValue audiofile-api-MachineClientId
+          TOKEN_URL: !Sub
+            - ${CognitoDomain}/oauth2/token
+            - CognitoDomain: !ImportValue audiofile-api-CognitoDomain
+      # The secret is a SecureString under the AWS managed aws/ssm key, whose
+      # key policy already lets account principals decrypt through SSM, so no
+      # kms:Decrypt statement is needed (a customer managed key would need one).
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/audiofile/machine-client-secret
+
+  GeneratedServerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${GeneratedServerFunction}
+      RetentionInDays: 14
+
+  McpHost:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ../../mcphost/template.yaml
+      Parameters:
+        ServerName: !Ref ServerName
+        ServerFunctionArn: !GetAtt GeneratedServerFunction.Arn
+        BridgeUrl: !ImportValue audiofile-auth-BridgeUrl
+        IssuerUrl: !ImportValue audiofile-api-IssuerUrl
+        UserPoolId: !ImportValue audiofile-api-UserPoolId
+
+Outputs:
+  McpUrl:
+    Description: MCP server URL to add as a connector
+    Value: !GetAtt McpHost.Outputs.McpUrl

@@ -22,3 +22,6 @@ samconfig.local.toml
 
 # Superpowers SDD scratch
 .superpowers/
+
+# Generated on camera (scripts/generate-server.sh); never committed
+servers/generated/app/
