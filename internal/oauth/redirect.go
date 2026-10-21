@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 // Fixed redirect URIs, compared as exact strings.
@@ -53,4 +54,37 @@ func allowedLoopback(uri string) bool {
 	}
 	// Rebuild the only acceptable spelling and compare exactly.
 	return uri == "http://"+host+":"+strconv.Itoa(port)+"/callback"
+}
+
+// portlessLoopback are the loopback redirect URIs Claude Code's client
+// metadata document declares, without a port. They are accepted when a
+// client registers them, never as a requested redirect_uri.
+var portlessLoopback = map[string]string{
+	"http://localhost/callback": "localhost",
+	"http://127.0.0.1/callback": "127.0.0.1",
+}
+
+// allowedRegistrationRedirect reports whether a client may declare uri in its
+// redirect_uris: anything AllowedRedirect accepts, plus the portless
+// loopback forms.
+func allowedRegistrationRedirect(uri, chatgptCallbackID string) bool {
+	return portlessLoopback[uri] != "" || AllowedRedirect(uri, chatgptCallbackID)
+}
+
+// redirectRegistered reports whether requested is one of the client's
+// registered redirect URIs. Matching is exact, except that a registered
+// portless loopback entry (http://localhost/callback or
+// http://127.0.0.1/callback) matches the same host and path on any port
+// (RFC 8252 §7.3). The caller must still check AllowedRedirect.
+func redirectRegistered(registered []string, requested string) bool {
+	for _, r := range registered {
+		if r == requested {
+			return true
+		}
+		if host, ok := portlessLoopback[r]; ok && allowedLoopback(requested) &&
+			strings.HasPrefix(requested, "http://"+host+":") {
+			return true
+		}
+	}
+	return false
 }

@@ -17,6 +17,7 @@ type server struct {
 	cimd       *cimdCache
 	cimdFlight singleflight.Group
 	fetch      *http.Client // CIMD fetches: no redirects, short timeout
+	upstream   *http.Client // Cognito calls: no redirects, 5 s timeout
 	// allowCIMDHost decides which client_id URLs may be fetched. Tests
 	// replace it to point at an httptest server.
 	allowCIMDHost func(u *url.URL) bool
@@ -38,6 +39,7 @@ func newServer(cfg Config, st State) *server {
 		now:           now,
 		cimd:          newCIMDCache(cimdCacheSize, cimdCacheTTL, now),
 		fetch:         cimdHTTPClient(cfg.HTTPClient),
+		upstream:      upstreamHTTPClient(cfg.HTTPClient),
 		allowCIMDHost: defaultCIMDHost,
 	}
 }
@@ -46,14 +48,10 @@ func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", s.handleMetadata)
 	mux.HandleFunc("POST /register", s.handleRegister)
-	mux.HandleFunc("GET /authorize", notImplemented) // T22
-	mux.HandleFunc("GET /callback", notImplemented)  // T22
-	mux.HandleFunc("POST /token", notImplemented)    // T22
+	mux.HandleFunc("GET /authorize", s.handleAuthorize)
+	mux.HandleFunc("GET /callback", s.handleCallback)
+	mux.HandleFunc("POST /token", s.handleToken)
 	return mux
-}
-
-func notImplemented(w http.ResponseWriter, _ *http.Request) {
-	writeOAuthError(w, http.StatusNotImplemented, "server_error", "not implemented")
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

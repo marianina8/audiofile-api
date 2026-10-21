@@ -1,4 +1,4 @@
-.PHONY: test test-dynamo lint-spec build layer validate build-ApiFunction build-ProcessorFunction
+.PHONY: test test-dynamo lint-spec build layer validate validate-auth build-auth build-ApiFunction build-ProcessorFunction build-BridgeFunction
 
 LAMBDA_GO := GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags lambda.norpc -trimpath -ldflags="-s -w"
 
@@ -29,6 +29,13 @@ build: validate
 validate:
 	sam validate --lint -t template.yaml
 
+# The OAuth bridge stack (mcp-auth); its BridgeFunction builds from the repo root.
+validate-auth:
+	sam validate --lint -t auth/template.yaml
+
+build-auth: validate-auth
+	cd auth && sam build -t template.yaml
+
 # Copies ffmpeg/ffprobe from the digest-pinned static-ffmpeg image (needs Docker),
 # verifies their checksums and puts them in layers/ffmpeg/bin/ (git-ignored).
 layer:
@@ -39,3 +46,6 @@ build-ApiFunction:
 
 build-ProcessorFunction:
 	$(LAMBDA_GO) -o $(ARTIFACTS_DIR)/bootstrap ./cmd/processor
+
+build-BridgeFunction:
+	$(LAMBDA_GO) -o $(ARTIFACTS_DIR)/bootstrap ./cmd/mcpauth

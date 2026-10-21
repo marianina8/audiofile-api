@@ -79,3 +79,50 @@ func TestAllowedRedirect_BadCallbackIDNeverMatches(t *testing.T) {
 		}
 	}
 }
+
+func TestRedirectRegistered(t *testing.T) {
+	cases := []struct {
+		registered []string
+		requested  string
+		want       bool
+	}{
+		{[]string{"https://claude.ai/api/mcp/auth_callback"}, "https://claude.ai/api/mcp/auth_callback", true},
+		{[]string{"http://localhost:53122/callback"}, "http://localhost:53122/callback", true},
+		// Exact match only for entries that carry a port.
+		{[]string{"http://localhost:53122/callback"}, "http://localhost:53123/callback", false},
+		// Portless loopback entries match the same host and path on any port (RFC 8252 §7.3).
+		{[]string{"http://localhost/callback"}, "http://localhost:53122/callback", true},
+		{[]string{"http://127.0.0.1/callback"}, "http://127.0.0.1:1/callback", true},
+		{[]string{"http://localhost/callback", "http://127.0.0.1/callback"}, "http://127.0.0.1:65535/callback", true},
+		{[]string{"http://localhost/callback"}, "http://127.0.0.1:53122/callback", false},
+		{[]string{"http://127.0.0.1/callback"}, "http://localhost:53122/callback", false},
+		{[]string{"http://localhost/callback"}, "http://localhost/callback", true},
+		{[]string{"http://localhost/callback"}, "http://localhost:53122/other", false},
+		{[]string{"http://localhost/callback"}, "http://localhost:0/callback", false},
+		{[]string{"http://localhost/callback"}, "http://localhost:053122/callback", false},
+		{[]string{"http://localhost/callback"}, "https://localhost:53122/callback", false},
+		{[]string{"http://localhost/callback"}, "http://localhost:53122/callback?x=1", false},
+		{[]string{"http://localhost/callback"}, "http://localhost.evil.com:53122/callback", false},
+		{[]string{"http://localhost/oauth/callback"}, "http://localhost:6274/oauth/callback", false},
+		{nil, "http://localhost:53122/callback", false},
+		{[]string{"https://claude.ai/api/mcp/auth_callback"}, "", false},
+	}
+	for _, c := range cases {
+		if got := redirectRegistered(c.registered, c.requested); got != c.want {
+			t.Errorf("redirectRegistered(%q, %q) = %v, want %v", c.registered, c.requested, got, c.want)
+		}
+	}
+}
+
+func TestAllowedRegistrationRedirect(t *testing.T) {
+	for _, uri := range []string{"http://localhost/callback", "http://127.0.0.1/callback", "http://localhost:53122/callback", "https://claude.ai/api/mcp/auth_callback"} {
+		if !allowedRegistrationRedirect(uri, "") {
+			t.Errorf("allowedRegistrationRedirect(%q) = false, want true", uri)
+		}
+	}
+	for _, uri := range []string{"http://localhost/evil", "http://localhost:/callback", "http://[::1]/callback", "https://localhost/callback", "http://localhost/callback/", "http://evil.com/callback"} {
+		if allowedRegistrationRedirect(uri, "") {
+			t.Errorf("allowedRegistrationRedirect(%q) = true, want false", uri)
+		}
+	}
+}

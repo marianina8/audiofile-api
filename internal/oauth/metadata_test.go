@@ -87,9 +87,11 @@ func TestRoutes(t *testing.T) {
 		method, path string
 		want         int
 	}{
-		{http.MethodGet, "/authorize", http.StatusNotImplemented},
-		{http.MethodGet, "/callback", http.StatusNotImplemented},
-		{http.MethodPost, "/token", http.StatusNotImplemented},
+		{http.MethodGet, "/authorize", http.StatusBadRequest},
+		{http.MethodGet, "/callback", http.StatusBadRequest},
+		{http.MethodPost, "/token", http.StatusBadRequest},
+		{http.MethodPost, "/authorize", http.StatusMethodNotAllowed},
+		{http.MethodGet, "/token", http.StatusMethodNotAllowed},
 		{http.MethodPost, "/.well-known/oauth-authorization-server", http.StatusMethodNotAllowed},
 		{http.MethodGet, "/register", http.StatusMethodNotAllowed},
 		{http.MethodGet, "/.well-known/openid-configuration", http.StatusNotFound},

@@ -11,6 +11,8 @@ import (
 	"context"
 	"net/http"
 	"time"
+
+	"github.com/marianina8/audiofile-api/internal/jwtverify"
 )
 
 // Config configures the bridge.
@@ -21,19 +23,32 @@ type Config struct {
 	// local tests only, because the Host header is client-controlled outside
 	// API Gateway.
 	Issuer string
-	// CognitoDomain is the user pool's managed login domain (used by T22).
+	// CognitoDomain is the user pool's managed login base URL, for example
+	// https://<prefix>.auth.<region>.amazoncognito.com (no trailing slash; one
+	// is trimmed).
 	CognitoDomain string
-	// CognitoClientID is the bridge's confidential Cognito app client (T22).
+	// CognitoClientID is the bridge's public (no secret) Cognito app client.
+	// Its only callback URL is <Issuer>/callback.
 	CognitoClientID string
 	// ChatGPTCallbackID enables https://chatgpt.com/connector/oauth/{id} as a
 	// redirect URI. Empty disables it.
 	ChatGPTCallbackID string
 	// Resources lists the registered MCP server URLs (allowed `resource`
-	// values; used by T22).
+	// values). See SSMResources.
 	Resources func(ctx context.Context) ([]string, error)
-	// HTTPClient is used for outbound fetches (CIMD documents). Nil means a
-	// default client. Its Timeout and CheckRedirect are overridden for CIMD.
+	// Verifier checks the Cognito access token after the code exchange
+	// (and after a refresh that names a resource). *jwtverify.Verifier
+	// satisfies it.
+	Verifier TokenVerifier
+	// HTTPClient is used for outbound calls (CIMD documents and Cognito). Nil
+	// means a default client. Its Timeout and CheckRedirect are overridden.
 	HTTPClient *http.Client
 	// Now is the clock. Nil means time.Now.
 	Now func() time.Time
+}
+
+// TokenVerifier verifies a Cognito access token for an audience and group.
+// Errors wrap jwtverify.ErrInvalid, ErrAudience, ErrGroup or ErrUnavailable.
+type TokenVerifier interface {
+	Verify(ctx context.Context, token, audience, requiredGroup string) (jwtverify.Claims, error)
 }

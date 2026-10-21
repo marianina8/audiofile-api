@@ -74,7 +74,7 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, u := range req.RedirectURIs {
-		if !AllowedRedirect(u, s.cfg.ChatGPTCallbackID) {
+		if !allowedRegistrationRedirect(u, s.cfg.ChatGPTCallbackID) {
 			s.registerError(w, "invalid_redirect_uri", "redirect_uri is not on the allowlist")
 			return
 		}

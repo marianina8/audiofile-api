@@ -84,6 +84,13 @@ func TestRegister(t *testing.T) {
 		}
 	})
 
+	t.Run("portless loopback redirect is accepted at registration", func(t *testing.T) {
+		rec := postRegister(t, h, "application/json", `{"redirect_uris":["http://localhost/callback","http://127.0.0.1/callback"]}`)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+		}
+	})
+
 	t.Run("client ids are distinct", func(t *testing.T) {
 		body := `{"redirect_uris":["http://127.0.0.1:9/callback"]}`
 		a := postRegister(t, h, "application/json", body)

@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: mcp-auth - OAuth bridge in front of the audiofile-api Cognito pool for remote MCP servers
+
+Parameters:
+  ChatGPTCallbackId:
+    Type: String
+    Default: ""
+    AllowedPattern: "^[A-Za-z0-9_-]*$"
+    Description: ChatGPT per-connector callback id (https://chatgpt.com/connector/oauth/{id}). Empty disables it.
+
+Globals:
+  Function:
+    Runtime: provided.al2023
+    Architectures: [arm64]
+    Handler: bootstrap
+
+Resources:
+  # Plain API Gateway v2 resources rather than AWS::Serverless::HttpApi with a
+  # function event: SAM puts the function's ARN in the API body, which would
+  # make BridgeApi -> BridgeFunction -> BridgeApi circular (the function and
+  # BridgeClient need the API's URL).
+  BridgeApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: mcp-auth-bridge
+      ProtocolType: HTTP
+
+  BridgeStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref BridgeApi
+      StageName: $default
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingRateLimit: 10
+        ThrottlingBurstLimit: 20
+
+  BridgeIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref BridgeApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt BridgeFunction.Arn
+      PayloadFormatVersion: "2.0"
+
+  BridgeRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref BridgeApi
+      RouteKey: $default
+      Target: !Sub integrations/${BridgeIntegration}
+
+  BridgeInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref BridgeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${BridgeApi}/*
+
+  # Public app client (no secret) used only by the bridge. Managed login and
+  # SRP are required for resource binding (docs/notes/resource-binding.md).
+  BridgeClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !ImportValue audiofile-api-UserPoolId
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email]
+      SupportedIdentityProviders: [COGNITO]
+      CallbackURLs:
+        - !Sub https://${BridgeApi}.execute-api.${AWS::Region}.amazonaws.com/callback
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+  BridgeBranding:
+    Type: AWS::Cognito::ManagedLoginBranding
+    Properties:
+      UserPoolId: !ImportValue audiofile-api-UserPoolId
+      ClientId: !Ref BridgeClient
+      UseCognitoProvidedValues: true
+
+  # Pending requests, authorization codes and DCR clients (pk = kind#id).
+  StateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  BridgeFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      CodeUri: ..
+      MemorySize: 256
+      Timeout: 10
+      Environment:
+        Variables:
+          ISSUER_URL: !Sub https://${BridgeApi}.execute-api.${AWS::Region}.amazonaws.com
+          COGNITO_ISSUER: !ImportValue audiofile-api-IssuerUrl
+          COGNITO_DOMAIN: !ImportValue audiofile-api-CognitoDomain
+          COGNITO_CLIENT_ID: !Ref BridgeClient
+          STATE_TABLE: !Ref StateTable
+          RESOURCES_SSM_PREFIX: /audiofile/mcp-resources/
+          CHATGPT_CALLBACK_ID: !Ref ChatGPTCallbackId
+      Policies:
+        - DynamoDBCrudPolicy: {TableName: !Ref StateTable}
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParametersByPath
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/audiofile/mcp-resources*
+
+  BridgeLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${BridgeFunction}
+      RetentionInDays: 14
+
+Outputs:
+  BridgeUrl:
+    Description: OAuth bridge issuer and base URL
+    Value: !Sub https://${BridgeApi}.execute-api.${AWS::Region}.amazonaws.com
+    Export: {Name: audiofile-auth-BridgeUrl}
