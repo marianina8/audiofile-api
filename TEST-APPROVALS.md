@@ -65,7 +65,7 @@ To clean up afterwards: `claude mcp remove things-test`.
 |---|---|---|---|---|
 | Claude (web) | | | | |
 | Claude Desktop | not recorded (re-check) | **yes**: prompt appeared | included **Always allow** (accidentally chosen) | Tool calls shown as "Listed things-test things" / "Used things-test". Claude noticed the delete didn't stick (expected: the test server is stateless) and promised to ask in chat before future deletes |
-| Claude Code | | | | |
+| Claude Code (default mode) | **yes** | **yes** | standard "Do you want to proceed?" permission prompt | Prompts for every MCP tool regardless of `readOnlyHint`/`destructiveHint`; in auto mode it asked for neither (first run). After the delete Claude reported "apple and cherry are still there" without banana, which is wrong (the stateless test server always returns all three); it didn't re-check |
 | ChatGPT (Plugins › custom MCP server) | **no**: ran straight away | **yes**: "Allow ChatGPT to use things-test? Deletes the persistent item named \"banana\"." | **Deny / Allow once** (no always-allow) | OAuth via the bridge worked (CIMD). Evidence that ChatGPT honours `readOnlyHint`: read ran freely, destructive asked |
 
 
