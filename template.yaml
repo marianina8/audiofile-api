@@ -45,7 +45,8 @@ Resources:
     Properties:
       UserPoolId: !Ref UserPool
       Domain: !Ref CognitoDomainPrefix
-      ManagedLoginVersion: 1
+      # Managed login (v2) is required for resource binding (docs/notes/resource-binding.md).
+      ManagedLoginVersion: 2
 
   ResourceServer:
     Type: AWS::Cognito::UserPoolResourceServer
