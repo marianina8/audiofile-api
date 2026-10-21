@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
+	"github.com/aws/smithy-go"
 )
 
 // Genres is the fixed list the model may answer with.
@@ -109,4 +112,24 @@ func Guess(ctx context.Context, c Converser, mp3 []byte) (string, error) {
 		}
 	}
 	return NormalizeGenre(sb.String()), nil
+}
+
+var (
+	arnRe     = regexp.MustCompile(`arn:aws[^\s]*`)
+	accountRe = regexp.MustCompile(`\d{12}`)
+)
+
+// Redact removes ARNs and 12-digit account numbers from text before printing.
+func Redact(s string) string {
+	return accountRe.ReplaceAllString(arnRe.ReplaceAllString(s, "[redacted]"), "[redacted]")
+}
+
+// SafeError describes a failure for printing: only the API error code and a
+// generic message, never the raw error text (it can carry ARNs and account ids).
+func SafeError(err error) string {
+	var api smithy.APIError
+	if errors.As(err, &api) {
+		return Redact("error: Bedrock request failed (" + api.ErrorCode() + ")")
+	}
+	return "error: request failed"
 }

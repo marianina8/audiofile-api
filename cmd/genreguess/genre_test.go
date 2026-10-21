@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
+	"github.com/aws/smithy-go"
 )
 
 func TestNormalizeGenre(t *testing.T) {
@@ -98,4 +102,31 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+type errClient struct{ err error }
+
+func (e errClient) Converse(context.Context, *bedrockruntime.ConverseInput, ...func(*bedrockruntime.Options)) (*bedrockruntime.ConverseOutput, error) {
+	return nil, e.err
+}
+
+func TestErrorsAreRedacted(t *testing.T) {
+	const arn = "arn:aws:sts::123456789012:assumed-role/Admin/me"
+	raw := fmt.Errorf("operation error: User: %s is not authorized (acct 123456789012): %w", arn,
+		&smithy.GenericAPIError{Code: "AccessDeniedException", Message: arn})
+	for name, err := range map[string]error{"api": raw, "plain": errors.New("failed for " + arn)} {
+		out := guessClip(context.Background(), errClient{err}, []byte("x"))
+		if regexp.MustCompile(`\d{12}`).MatchString(out) || regexp.MustCompile(`arn:aws`).MatchString(out) {
+			t.Errorf("%s: output leaks account data: %q", name, out)
+		}
+		if !regexp.MustCompile(`^error:`).MatchString(out) {
+			t.Errorf("%s: output = %q, want error prefix", name, out)
+		}
+	}
+	if out := guessClip(context.Background(), errClient{raw}, nil); out != "error: Bedrock request failed (AccessDeniedException)" {
+		t.Errorf("api error output = %q", out)
+	}
+	if got := Redact("x arn:aws:iam::123456789012:role/a y 999999999999"); got != "x [redacted] y [redacted]" {
+		t.Errorf("Redact = %q", got)
+	}
 }

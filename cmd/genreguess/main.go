@@ -145,11 +145,16 @@ func runFill(ctx context.Context, c Converser, dir, csvPath string, header []str
 func guessFile(ctx context.Context, c Converser, path string) string {
 	clip, err := cutClip(ctx, path)
 	if err != nil {
-		return "error: " + err.Error()
+		return "error: " + Redact(err.Error())
 	}
+	return guessClip(ctx, c, clip)
+}
+
+// guessClip asks the model and returns the genre, or a redacted error string.
+func guessClip(ctx context.Context, c Converser, clip []byte) string {
 	g, err := Guess(ctx, c, clip)
 	if err != nil {
-		return "error: " + err.Error()
+		return SafeError(err)
 	}
 	return g
 }

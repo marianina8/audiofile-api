@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -25,15 +26,43 @@ var uploaderOverrides = []struct{ prefix, name string }{
 	{"alex-morgan", "Alex Morgan"},
 	{"tazdev_music", "Tazdev Music"},
 	{"freesoundserver", "FreeSoundServer"},
+	{"xhowiexo-madewithlove", "Xhowiexo"}, // "madewithlove" is a label, not part of the title
 }
 
 // genreKeywords are checked in order against the title words (not the artist).
-var genreKeywords = []struct{ keyword, genre string }{
-	{"electro-industrial", "Industrial"},
-	{"rock", "Rock"},
-	{"piano", "Classical"},
-	{"cinematic", "Cinematic"},
-	{"upbeat", "Pop"},
+// drop marks keywords whose words are removed from the title because they only
+// describe the genre (piano stays: "Abstract Piano" is a real title).
+var genreKeywords = []struct {
+	keyword, genre string
+	drop           bool
+}{
+	{"electro-industrial", "Industrial", true},
+	{"rock", "Rock", true},
+	{"piano", "Classical", false},
+	{"cinematic", "Cinematic", false},
+	{"upbeat", "Pop", true},
+}
+
+// cleanTitle drops the words of genre-setting keywords and collapses
+// consecutive duplicate words. It returns "" when nothing is left.
+func cleanTitle(title string) string {
+	drop := map[string]bool{}
+	for _, k := range genreKeywords {
+		if k.drop {
+			for _, w := range strings.Split(k.keyword, "-") {
+				drop[w] = true
+			}
+		}
+	}
+	var out []string
+	for _, w := range strings.Fields(title) {
+		lw := strings.ToLower(w)
+		if drop[lw] || (len(out) > 0 && strings.ToLower(out[len(out)-1]) == lw) {
+			continue
+		}
+		out = append(out, w)
+	}
+	return strings.Join(out, " ")
 }
 
 // splitName returns the uploader display name and the rest of the filename
@@ -70,13 +99,13 @@ func draft(files []string) [][]string {
 	for _, f := range files {
 		stem := strings.TrimSuffix(f, filepath.Ext(f))
 		artist, rest := splitName(stem)
-		title := "Untitled"
+		title := ""
 		if rest != "" {
 			// Reuse the shared token rules (filler phrases, trailing id and
 			// "(1)" copy suffix) on the filename minus the uploader.
-			title = processor.TitleFromFilename(rest + ".mp3")
+			title = cleanTitle(processor.TitleFromFilename(rest + ".mp3"))
 		}
-		if title == "Untitled" {
+		if title == "" || title == "Untitled" {
 			n[artist]++
 			title = fmt.Sprintf("%s Track %d", artist, n[artist])
 		}
@@ -95,7 +124,7 @@ func main() {
 	toJSON := flag.String("to-json", "", "print this library CSV as a JSON array of objects and exit (used by scripts/seed.sh)")
 	flag.Parse()
 	if *toJSON != "" {
-		if err := csvToJSON(*toJSON); err != nil {
+		if err := csvToJSON(*toJSON, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "draftlibrary:", err)
 			os.Exit(1)
 		}
@@ -111,17 +140,14 @@ func main() {
 		files[i] = filepath.Base(m)
 	}
 	sort.Strings(files)
-	w := csv.NewWriter(os.Stdout) // RFC 4180 quoting
-	_ = w.Write(Header)
-	_ = w.WriteAll(draft(files))
-	if err := w.Error(); err != nil {
+	if err := writeCSV(os.Stdout, draft(files)); err != nil {
 		fmt.Fprintln(os.Stderr, "draftlibrary:", err)
 		os.Exit(1)
 	}
 }
 
 // csvToJSON prints a library CSV as a JSON array of {header: value} objects.
-func csvToJSON(path string) error {
+func csvToJSON(path string, w io.Writer) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -145,5 +171,13 @@ func csvToJSON(path string) error {
 		}
 		out = append(out, m)
 	}
-	return json.NewEncoder(os.Stdout).Encode(out)
+	return json.NewEncoder(w).Encode(out)
+}
+
+// writeCSV writes the header and rows with RFC 4180 quoting.
+func writeCSV(out io.Writer, rows [][]string) error {
+	w := csv.NewWriter(out)
+	_ = w.Write(Header)
+	_ = w.WriteAll(rows)
+	return w.Error()
 }

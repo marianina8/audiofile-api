@@ -194,7 +194,7 @@ wait_ready() { # wait_ready <id>: 0 ready, 1 failed/timeout (message in $WORK/wh
 
 upload_one() { # upload_one <path> <sha> <name> <title> <artist> <album> <genre> <year>
   local path=$1 sha=$2 name=$3 title=$4 artist=$5 album=$6 genre=$7 year=$8
-  local tagged="$WORK/tagged.mp3" id size code
+  local tagged="$WORK/tagged.mp3" id size code url hdrs
   local meta=()
   [ -z "$title" ] || meta+=(-metadata "title=$title")
   [ -z "$artist" ] || meta+=(-metadata "artist=$artist")
@@ -204,22 +204,25 @@ upload_one() { # upload_one <path> <sha> <name> <title> <artist> <album> <genre>
   rm -f "$tagged"
   ffmpeg -nostdin -loglevel error -i "$path" -map 0:a -c copy -id3v2_version 3 \
     ${meta[@]+"${meta[@]}"} "$tagged" || { echo "ffmpeg tagging failed" >"$WORK/why"; return 1; }
-  size=$(wc -c <"$tagged" | tr -d ' ')
+  size=$(wc -c <"$tagged" | tr -d ' ') || { echo "could not size the tagged copy" >"$WORK/why"; return 1; }
   jq -n --arg f "$name" --argjson s "$size" --arg h "$sha" \
-    '{filename: $f, size_bytes: $s, content_sha256: $h, content_type: "audio/mpeg"}' >"$WORK/req.json"
+    '{filename: $f, size_bytes: $s, content_sha256: $h, content_type: "audio/mpeg"}' >"$WORK/req.json" ||
+    { echo "could not build the upload request" >"$WORK/why"; return 1; }
   code=$(curl -sS -o "$WORK/resp.json" -w '%{http_code}' -X POST -H "@$WORK/auth" \
     --json "@$WORK/req.json" "$API/tracks/uploads") || { echo "POST /tracks/uploads: curl error" >"$WORK/why"; return 1; }
   if [ "$code" != 201 ]; then
     echo "POST /tracks/uploads returned $code: $(jq -r '.error.message // empty' "$WORK/resp.json" 2>/dev/null)" >"$WORK/why"
     return 1
   fi
-  id=$(jq -r '.track_id' "$WORK/resp.json")
+  id=$(jq -r '.track_id' "$WORK/resp.json") || { echo "unreadable upload response" >"$WORK/why"; return 1; }
   case "$id" in '' | null | *[!A-Za-z0-9_-]*) echo "unexpected track id" >"$WORK/why"; return 1 ;; esac
   # URL and headers go through a curl config file so the signature stays off argv.
-  {
-    printf 'url = "%s"\n' "$(jq -r '.upload_url' "$WORK/resp.json")"
-    jq -r '.upload_headers // {} | to_entries[] | "header = \"\(.key): \(.value)\""' "$WORK/resp.json"
-  } >"$WORK/put.cfg"
+  url=$(jq -r '.upload_url // empty' "$WORK/resp.json") || url=""
+  [ -n "$url" ] || { echo "upload response has no upload_url" >"$WORK/why"; return 1; }
+  hdrs=$(jq -r '.upload_headers // {} | to_entries[] | "header = \"\(.key): \(.value)\""' "$WORK/resp.json") ||
+    { echo "unreadable upload_headers" >"$WORK/why"; return 1; }
+  printf 'url = "%s"\n' "$url" >"$WORK/put.cfg" || { echo "could not write curl config" >"$WORK/why"; return 1; }
+  if [ -n "$hdrs" ]; then printf '%s\n' "$hdrs" >>"$WORK/put.cfg" || { echo "could not write curl config" >"$WORK/why"; return 1; }; fi
   code=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT -K "$WORK/put.cfg" --data-binary "@$tagged") ||
     { echo "PUT: curl error" >"$WORK/why"; return 1; }
   [ "$code" = 200 ] || { echo "PUT returned $code" >"$WORK/why"; return 1; }
