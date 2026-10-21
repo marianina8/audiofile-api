@@ -46,6 +46,9 @@ li.current .num { color: var(--accent); font-weight: 700; }
 .meta { flex: 1; min-width: 0; }
 .title { display: block; font-weight: 500; overflow-wrap: anywhere; }
 .artist { display: block; color: var(--muted); font-size: .875rem; overflow-wrap: anywhere; }
+.status { display: block; color: var(--accent); font-size: .8rem; }
+.status:empty { display: none; }
+.status.err { color: #d64545; }
 .bpm { flex: none; color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; }
 </style>
 </head>
@@ -55,24 +58,42 @@ li.current .num { color: var(--accent); font-weight: 700; }
 <p class="count">{{len .Tracks}} {{if eq (len .Tracks) 1}}track{{else}}tracks{{end}}</p>
 <section class="player">
 <p class="now" id="now" aria-live="polite"></p>
-<audio controls id="audio" preload="metadata"></audio>
+<audio controls id="audio" preload="auto"></audio>
 <div class="controls">
 <button type="button" id="prev">Previous</button>
 <button type="button" id="next" class="primary">Next</button>
 </div>
 </section>
 <ol id="list">
-{{range $i, $t := .Tracks}}<li data-i="{{$i}}" tabindex="0"><span class="num">{{inc $i}}</span><span class="meta"><span class="title">{{$t.Title}}</span>{{if $t.Artist}}<span class="artist">{{$t.Artist}}</span>{{end}}</span>{{if $t.BPM}}<span class="bpm">{{$t.BPM}} BPM</span>{{end}}</li>
+{{range $i, $t := .Tracks}}<li data-i="{{$i}}" tabindex="0"><span class="num">{{inc $i}}</span><span class="meta"><span class="title">{{$t.Title}}</span>{{if $t.Artist}}<span class="artist">{{$t.Artist}}</span>{{end}}<span class="status" aria-live="polite"></span></span>{{if $t.BPM}}<span class="bpm">{{$t.BPM}} BPM</span>{{end}}</li>
 {{end}}</ol>
 </main>
 <script>
 const tracks = {{.Tracks}};
-const audio = document.getElementById("audio");
+let audio = document.getElementById("audio");
 const now = document.getElementById("now");
 const prev = document.getElementById("prev");
 const next = document.getElementById("next");
 const rows = Array.from(document.querySelectorAll("#list li"));
+const statuses = rows.map(r => r.querySelector(".status"));
 let cur = 0;
+// Hidden element that buffers the next track; swapped in on advance.
+let nextAudio = null;
+let nextIdx = -1;
+
+function setStatus(text, isErr) {
+  statuses.forEach((s, n) => {
+    s.textContent = n === cur ? text : "";
+    s.classList.toggle("err", n === cur && !!isErr);
+  });
+}
+
+function bind(el) {
+  ["loadstart", "waiting"].forEach(ev => el.addEventListener(ev, () => { if (el === audio) setStatus("Loading\u2026"); }));
+  ["playing", "canplay"].forEach(ev => el.addEventListener(ev, () => { if (el === audio) setStatus(""); }));
+  el.addEventListener("error", () => { if (el === audio) setStatus("Couldn\u2019t load this track", true); });
+  el.addEventListener("ended", () => { if (el === audio && cur < tracks.length - 1) load(cur + 1, true); });
+}
 
 function show(i) {
   cur = i;
@@ -80,15 +101,39 @@ function show(i) {
     r.classList.toggle("current", n === i);
     if (n === i) r.setAttribute("aria-current", "true"); else r.removeAttribute("aria-current");
   });
-  now.textContent = tracks[i].title + (tracks[i].artist ? " — " + tracks[i].artist : "");
+  now.textContent = tracks[i].title + (tracks[i].artist ? " \u2014 " + tracks[i].artist : "");
   prev.disabled = i === 0;
   next.disabled = i === tracks.length - 1;
+  setStatus("");
+}
+
+function prefetch(i) {
+  if (i >= tracks.length) { nextAudio = null; nextIdx = -1; return; }
+  if (nextAudio && nextIdx === i) return;
+  nextAudio = new Audio();
+  nextAudio.preload = "auto";
+  nextAudio.src = tracks[i].url;
+  nextIdx = i;
 }
 
 function load(i, play) {
   show(i);
-  audio.src = tracks[i].url;
+  if (nextAudio && nextIdx === i) {
+    // Swap the already-buffered element into the page in place of the old one.
+    const el = nextAudio;
+    nextAudio = null; nextIdx = -1;
+    audio.pause();
+    el.controls = true;
+    el.id = "audio";
+    audio.replaceWith(el);
+    audio = el;
+    bind(el);
+    if (el.readyState >= 3) setStatus("");
+  } else {
+    audio.src = tracks[i].url;
+  }
   if (play) audio.play().catch(() => {});
+  prefetch(i + 1);
 }
 
 rows.forEach((r, n) => {
@@ -99,8 +144,8 @@ rows.forEach((r, n) => {
 });
 prev.addEventListener("click", () => { if (cur > 0) load(cur - 1, !audio.paused); });
 next.addEventListener("click", () => { if (cur < tracks.length - 1) load(cur + 1, !audio.paused); });
-audio.addEventListener("ended", () => { if (cur < tracks.length - 1) load(cur + 1, true); });
 
+bind(audio);
 load(0, false);
 </script>
 </body>
