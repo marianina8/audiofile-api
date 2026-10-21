@@ -44,9 +44,15 @@ func main() {
 		os.Exit(2)
 	}
 	if err := run(context.Background(), *dir, *csvPath, *validate); err != nil {
-		fmt.Fprintln(os.Stderr, "genreguess:", err)
+		fmt.Fprintln(os.Stderr, failureMessage(err))
 		os.Exit(1)
 	}
+}
+
+// failureMessage is the redacted text printed when run fails (SDK config and
+// credential errors can contain ARNs and account ids).
+func failureMessage(err error) string {
+	return "genreguess: " + Redact(err.Error())
 }
 
 func run(ctx context.Context, dir, csvPath string, validate bool) error {

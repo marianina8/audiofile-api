@@ -130,3 +130,11 @@ func TestErrorsAreRedacted(t *testing.T) {
 		t.Errorf("Redact = %q", got)
 	}
 }
+
+func TestFailureMessageRedacts(t *testing.T) {
+	err := fmt.Errorf("load AWS config: role arn:aws:iam::123456789012:role/x failed for 123456789012")
+	got := failureMessage(err)
+	if got != "genreguess: load AWS config: role [redacted] failed for [redacted]" {
+		t.Errorf("failureMessage = %q", got)
+	}
+}
