@@ -20,3 +20,15 @@ Notes:
 - If the browser reuses another portal session, `GetRoleCredentials` fails with "No access". Sign out (`aws sso logout --profile audiofile-admin`) and sign in again in a private window.
 - The first call to the Mistral model on Bedrock triggers a one-time AWS Marketplace subscription, which the policy allows.
 - To reproduce in another account: create the permission set with the policy file, create a user, assign it to the account, and add a matching profile.
+
+## SAM CLI and SSO profiles
+
+If `sam deploy --profile audiofile-admin` fails with `GetRoleCredentials ... No access` while `aws sts get-caller-identity --profile audiofile-admin` works, SAM is picking up another cached SSO session (both profiles share one start URL). Work around it by exporting the profile's short-lived credentials into the shell for that command:
+
+```sh
+eval "$(aws configure export-credentials --profile audiofile-admin --format env)"
+export AWS_REGION=us-west-2
+sam deploy ...            # or scripts/deploy-mcp.sh servers/mcptest
+```
+
+The variables expire with the SSO session (8 hours) and are never written to disk.
