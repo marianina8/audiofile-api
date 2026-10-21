@@ -11,6 +11,21 @@ af_aws() {
     AWS_DEFAULT_REGION="$region" command aws "$@"
 }
 
+# af_aws_json <service> <operation> [args...]: read the request JSON from
+# stdin and pass it to the AWS CLI as --cli-input-json file://<private temp
+# file> (the CLI rejects file:///dev/stdin). The file lives in a mode-700 temp
+# dir that a subshell-local EXIT trap removes, so nothing persists in the
+# caller's shell and the exit status is preserved.
+af_aws_json() {
+  (
+    umask 077
+    d=$(mktemp -d) || exit 1
+    trap 'rm -rf "$d"' EXIT
+    cat >"$d/input.json"
+    af_aws "$1" "$2" --cli-input-json "file://$d/input.json" "${@:3}"
+  )
+}
+
 # out <OutputKey> [stack]: print one CloudFormation stack output value.
 out() {
   local key="$1" stack="${2:-${AUDIOFILE_STACK:-audiofile-api}}"

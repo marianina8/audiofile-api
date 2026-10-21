@@ -25,7 +25,7 @@ client=$(out CliClientId)
 resp=$(AF_C="$client" AF_U="$user" AF_P="$temp" jq -n '{
     AuthFlow: "USER_PASSWORD_AUTH", ClientId: env.AF_C,
     AuthParameters: {USERNAME: env.AF_U, PASSWORD: env.AF_P}}' |
-  af_aws cognito-idp initiate-auth --cli-input-json file:///dev/stdin \
+  af_aws_json cognito-idp initiate-auth \
     --output json --no-cli-pager) || { echo "sign-in with the temporary password failed" >&2; exit 1; }
 
 if [ "$(printf '%s' "$resp" | jq -r '.ChallengeName // empty')" != "NEW_PASSWORD_REQUIRED" ]; then
@@ -39,7 +39,7 @@ AF_C="$client" AF_U="$user" AF_P="$new" AF_S="$(printf '%s' "$resp" | jq -r '.Se
     ClientId: env.AF_C, ChallengeName: "NEW_PASSWORD_REQUIRED", Session: env.AF_S,
     ChallengeResponses: {USERNAME: (if env.AF_ID != "" then env.AF_ID else env.AF_U end),
                          NEW_PASSWORD: env.AF_P}}' |
-  af_aws cognito-idp respond-to-auth-challenge --cli-input-json file:///dev/stdin \
+  af_aws_json cognito-idp respond-to-auth-challenge \
     --output json --no-cli-pager >/dev/null || { echo "setting the new password failed" >&2; exit 1; }
 
 echo "password set. Now run: source scripts/token.sh"

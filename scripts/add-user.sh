@@ -21,7 +21,7 @@ err=$(AF_POOL="$pool" AF_U="$email" jq -n '{
     UserPoolId: env.AF_POOL, Username: env.AF_U,
     UserAttributes: [{Name: "email", Value: env.AF_U}, {Name: "email_verified", Value: "true"}],
     DesiredDeliveryMediums: ["EMAIL"]}' |
-  af_aws cognito-idp admin-create-user --cli-input-json file:///dev/stdin \
+  af_aws_json cognito-idp admin-create-user \
     --no-cli-pager 2>&1 >/dev/null) || {
   if printf '%s' "$err" | grep -q UsernameExistsException; then
     created=0
@@ -32,7 +32,7 @@ err=$(AF_POOL="$pool" AF_U="$email" jq -n '{
 }
 
 AF_POOL="$pool" AF_U="$email" jq -n '{UserPoolId: env.AF_POOL, Username: env.AF_U, GroupName: "mcp-users"}' |
-  af_aws cognito-idp admin-add-user-to-group --cli-input-json file:///dev/stdin --no-cli-pager
+  af_aws_json cognito-idp admin-add-user-to-group --no-cli-pager
 
 if [ "$created" -eq 1 ]; then
   echo "user created and added to mcp-users"

@@ -33,7 +33,7 @@ _af_token() {
   resp=$(AF_C="$client" AF_U="$user" AF_P="$pw" jq -n '{
       AuthFlow: "USER_PASSWORD_AUTH", ClientId: env.AF_C,
       AuthParameters: {USERNAME: env.AF_U, PASSWORD: env.AF_P}}' |
-    af_aws cognito-idp initiate-auth --cli-input-json file:///dev/stdin \
+    af_aws_json cognito-idp initiate-auth \
       --output json --no-cli-pager) || { echo "sign-in failed" >&2; return 1; }
 
   challenge=$(printf '%s' "$resp" | jq -r '.ChallengeName // empty')
