@@ -4,6 +4,7 @@
 // {kind: "token"|"api", method, path, authorization, ok}.
 //
 //   POST /oauth2/token  client_credentials; checks Basic auth, grant and scope
+//   POST / (x-amz-target AmazonSSM.GetParameter)  the secret, for AWS_ENDPOINT_URL_SSM
 //   GET  /tracks        one fake track (needs the fake machine token)
 //   GET  /health        {"status":"ok"}
 import http from 'node:http';
@@ -14,6 +15,7 @@ const CLIENT_SECRET = process.env.FAKE_CLIENT_SECRET;
 const TOKEN = process.env.FAKE_MACHINE_TOKEN;
 const LOG = process.env.FAKE_LOG;
 
+const SECRET_PARAMETER = '/audiofile/machine-client-secret';
 const log = (entry) => fs.appendFileSync(LOG, JSON.stringify(entry) + '\n');
 const json = (res, status, body) => {
   res.writeHead(status, { 'content-type': 'application/json' });
@@ -27,6 +29,19 @@ http
     req.on('end', () => {
       const url = new URL(req.url, 'http://x');
       const authorization = req.headers.authorization ?? null;
+      if (req.method === 'POST' && req.headers['x-amz-target'] === 'AmazonSSM.GetParameter') {
+        const input = JSON.parse(raw || '{}');
+        const ok = input.Name === SECRET_PARAMETER && input.WithDecryption === true;
+        log({ kind: 'ssm', method: req.method, path: url.pathname, signed: /^AWS4-HMAC-SHA256 /.test(authorization ?? ''), ok });
+        res.writeHead(ok ? 200 : 400, { 'content-type': 'application/x-amz-json-1.1' });
+        return res.end(
+          JSON.stringify(
+            ok
+              ? { Parameter: { Name: SECRET_PARAMETER, Type: 'SecureString', Value: CLIENT_SECRET, Version: 1 } }
+              : { __type: 'ParameterNotFound', message: 'not found' },
+          ),
+        );
+      }
       if (req.method === 'POST' && url.pathname === '/oauth2/token') {
         const form = new URLSearchParams(raw);
         const basic = 'Basic ' + Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');

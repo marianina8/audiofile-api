@@ -1,7 +1,7 @@
 // Source edits for scripts/patch-generated-server.sh (openapi-mcp-generator 4.1.0 output).
 //
 //   node patch.mjs <dir> check                 verify every anchor; change nothing
-//   node patch.mjs <dir> apply [--json-response]
+//   node patch.mjs <dir> apply
 //
 // Each edit has an anchor (`find`, which must match exactly once) and a
 // `done` test (true once the edit is in). Edits already in are skipped, so
@@ -12,12 +12,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const [dir, mode, ...flags] = process.argv.slice(2);
+const [dir, mode] = process.argv.slice(2);
 if (!dir || !['check', 'apply'].includes(mode)) {
-  console.error('usage: node patch.mjs <generated-dir> check|apply [--json-response]');
+  console.error('usage: node patch.mjs <generated-dir> check|apply');
   process.exit(2);
 }
-const jsonResponse = flags.includes('--json-response');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const HTTP = 'src/streamable-http.ts';
 const INDEX = 'src/index.ts';
@@ -27,18 +26,19 @@ const statelessBlock = `      // patched: stateless - a new Server and transport
       // session map, so any instance (any Lambda) can answer any request.
       const server = this.createServer();
       const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined,${jsonResponse ? '\n        enableJsonResponse: true,' : ''}
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
       });
       transport.onerror = (err) => {
         console.error('StreamableHTTP transport error:', err);
       };
-      res.on('close', () => {
-        transport.close();
-        server.close();
-      });
       await server.connect(transport);
-      await transport.handleRequest(req, res, body);
-      return toFetchResponse(res);
+      try {
+        await transport.handleRequest(req, res, body);
+        return await toFetchResponse(res);
+      } finally {
+        await server.close(); // also closes the transport; fetch-to-node never emits 'close'
+      }
 `;
 
 const patches = [
@@ -55,7 +55,7 @@ const patches = [
     ],
   },
   {
-    summary: `made streamable HTTP stateless (new Server + transport per request, no session map${jsonResponse ? ', JSON responses' : ''}; GET/DELETE /mcp -> 405)`,
+    summary: 'made streamable HTTP stateless (new Server + transport per request, no session map, JSON responses; GET/DELETE /mcp -> 405)',
     edits: [
       {
         file: INDEX,
@@ -164,6 +164,18 @@ export function createServer(): Server {
         find: "const token = process.env[`BEARER_TOKEN_${schemeName.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}`];",
         replace: "const token = await getMachineToken(); // patched: the server's own token, never the caller's",
         done: has('const token = await getMachineToken();'),
+      },
+      {
+        file: '.env.example',
+        find: '# API Authentication\nBEARER_TOKEN_BEARERAUTH=your_bearer_token_here\n',
+        replace: `# API Authentication (patched: src/machine-auth.ts; BEARER_TOKEN_BEARERAUTH is not used)
+# Machine app client id and <CognitoDomain>/oauth2/token
+MACHINE_CLIENT_ID=your_machine_client_id_here
+TOKEN_URL=https://your-domain.auth.us-west-2.amazoncognito.com/oauth2/token
+# Local runs only; deployed, the secret is read from SSM /audiofile/machine-client-secret
+MACHINE_CLIENT_SECRET=your_machine_client_secret_here
+`,
+        done: has('BEARER_TOKEN_BEARERAUTH is not used'),
       },
       { copy: 'machine-auth.ts', to: 'src/machine-auth.ts' },
     ],

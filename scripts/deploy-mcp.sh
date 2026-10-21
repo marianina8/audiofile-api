@@ -2,9 +2,11 @@
 # Usage: [STACK_NAME=<stack>] [SERVER_NAME=<name>] scripts/deploy-mcp.sh <server-template-dir>
 #        (e.g. servers/mcptest)
 # Builds and deploys the MCP server stack in <dir>. Its template.yaml nests
-# mcphost/template.yaml and its samconfig.toml names the stack. STACK_NAME
-# overrides that stack name and SERVER_NAME sets the template's ServerName
-# parameter (for rehearsal stacks; the template must declare ServerName). The script
+# mcphost/template.yaml and its samconfig.toml names the stack. For a
+# rehearsal stack set both STACK_NAME (instead of samconfig's stack_name) and
+# SERVER_NAME (the template's ServerName parameter); both must differ from the
+# defaults, so a rehearsal can never touch the real stack or its mcp-host
+# registration. Set neither for the real stack. The script
 # then creates a fresh API Gateway deployment of stage v1 on the nested
 # mcp-host REST API. CloudFormation redeploys the stage only when the API's
 # shape changes (the hashed ApiDeployment logical id), so this step keeps
@@ -18,15 +20,31 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 . "$here/lib.sh"
 
-usage() { echo "usage: scripts/deploy-mcp.sh <server-template-dir>" >&2; exit 2; }
+usage() {
+  echo "usage: scripts/deploy-mcp.sh <server-template-dir>" >&2
+  echo "       STACK_NAME=<stack> SERVER_NAME=<name> scripts/deploy-mcp.sh <server-template-dir>   (rehearsal: both or neither)" >&2
+  exit 2
+}
 
 dir="${1:-}"
 [ -n "$dir" ] && [ -f "$dir/template.yaml" ] || usage
 [ -f "$dir/samconfig.toml" ] || { echo "$dir/samconfig.toml not found (it names the stack)" >&2; exit 1; }
-stack="${STACK_NAME:-$(sed -n 's/^[[:space:]]*stack_name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/samconfig.toml" | head -n 1)}"
+stack=$(sed -n 's/^[[:space:]]*stack_name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/samconfig.toml" | head -n 1)
 [ -n "$stack" ] || { echo "no stack_name in $dir/samconfig.toml" >&2; exit 1; }
-deploy_args=(--stack-name "$stack")
-[ -z "${SERVER_NAME:-}" ] || deploy_args+=(--parameter-overrides "ServerName=$SERVER_NAME")
+deploy_args=()
+if [ -n "${STACK_NAME:-}" ] || [ -n "${SERVER_NAME:-}" ]; then
+  [ -n "${STACK_NAME:-}" ] && [ -n "${SERVER_NAME:-}" ] || {
+    echo "set both STACK_NAME and SERVER_NAME for a rehearsal stack, or neither" >&2
+    usage
+  }
+  # Default of the ServerName parameter: the first "Default:" after "ServerName:".
+  default_server=$(awk '/^  ServerName:/ {p=1; next} p && /^  [^ ]/ {exit} p && /Default:/ {print $2; exit}' "$dir/template.yaml")
+  [ -n "$default_server" ] || { echo "$dir/template.yaml has no ServerName parameter default" >&2; exit 1; }
+  [ "$STACK_NAME" != "$stack" ] || { echo "STACK_NAME must differ from samconfig's stack_name ($stack)" >&2; exit 1; }
+  [ "$SERVER_NAME" != "$default_server" ] || { echo "SERVER_NAME must differ from the template default ($default_server)" >&2; exit 1; }
+  stack="$STACK_NAME"
+  deploy_args=(--stack-name "$stack" --parameter-overrides "ServerName=$SERVER_NAME")
+fi
 
 export AWS_PROFILE="${AWS_PROFILE:-audiofile-admin}"
 export AWS_REGION="${AWS_REGION:-us-west-2}"
@@ -38,7 +56,7 @@ trap '[ "$keep_log" -eq 1 ] || rm -rf "$logdir"' EXIT
 fail() { keep_log=1; echo "$1 failed; log: $log" >&2; exit 1; }
 
 (cd "$dir" && sam build) >"$log" 2>&1 || fail "sam build"
-(cd "$dir" && sam deploy --region "$AWS_REGION" "${deploy_args[@]}" \
+(cd "$dir" && sam deploy --region "$AWS_REGION" ${deploy_args[@]+"${deploy_args[@]}"} \
   --no-confirm-changeset --no-fail-on-empty-changeset) >>"$log" 2>&1 || fail "sam deploy"
 
 # The nested mcp-host stack is the one with an ApiId output.

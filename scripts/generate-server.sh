@@ -26,6 +26,11 @@ done
 
 if [ -e "$out" ] && [ -n "$(ls -A "$out" 2>/dev/null)" ]; then
   [ "$force" -eq 1 ] || { echo "$out already exists; re-run with --force to replace it" >&2; exit 1; }
+  # Only ever delete generator output.
+  if [ ! -f "$out/src/index.ts" ] || [ ! -f "$out/package.json" ]; then
+    echo "refusing to replace $out: it does not look like generator output (src/index.ts + package.json)" >&2
+    exit 1
+  fi
   rm -rf "$out"
 fi
 
@@ -37,6 +42,7 @@ npx --yes openapi-mcp-generator@4.1.0 \
 
 # One map entry per tool:   ["listTracks", {
 tools=$(grep -cE '^  \["[A-Za-z0-9_]+", \{$' "$out/src/index.ts" || true)
+[ "$tools" -gt 0 ] || { echo "no tools found in $out/src/index.ts (generator output changed?)" >&2; exit 1; }
 echo "generated $tools tools into $out"
 
 if [ "$patch" -eq 1 ]; then

@@ -33,9 +33,15 @@ async function requestToken(): Promise<string> {
     method: 'POST',
     headers: { authorization: `Basic ${basic}`, 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'client_credentials', scope: SCOPES }),
+    signal: AbortSignal.timeout(5000),
   });
-  if (!res.ok) throw new Error(`machine token request failed: HTTP ${res.status}`);
-  const body = (await res.json()) as { access_token?: string; expires_in?: number };
+  const body = (await res.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; error?: string };
+  if (!res.ok) {
+    if (res.status === 400 || res.status === 401) secret = undefined; // maybe rotated: re-read it next time
+    // Only Cognito's error code (e.g. invalid_client), never the request.
+    const code = typeof body.error === 'string' && /^[a-z_]{1,64}$/.test(body.error) ? ` ${body.error}` : '';
+    throw new Error(`machine token request failed: HTTP ${res.status}${code}`);
+  }
   if (!body.access_token) throw new Error('machine token response has no access_token');
   cached = { token: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 3600) * 1000 };
   return cached.token;
@@ -43,18 +49,24 @@ async function requestToken(): Promise<string> {
 
 function clientSecret(): Promise<string> {
   if (process.env.MACHINE_CLIENT_SECRET) return Promise.resolve(process.env.MACHINE_CLIENT_SECRET);
-  secret ??= new SSMClient({})
-    .send(new GetParameterCommand({ Name: SECRET_PARAMETER, WithDecryption: true }))
-    .then((out) => {
-      if (!out.Parameter?.Value) throw new Error(`SSM parameter ${SECRET_PARAMETER} is empty`);
-      return out.Parameter.Value;
-    })
-    .catch((err) => {
-      secret = undefined; // retry on the next call
-      // err.name only: AWS error messages can carry the role ARN (account id).
-      throw new Error(`could not read SSM parameter ${SECRET_PARAMETER} (${err?.name ?? 'Error'})`);
-    });
+  secret ??= readSecret().catch((err) => {
+    secret = undefined; // retry on the next call
+    throw err;
+  });
   return secret;
+}
+
+async function readSecret(): Promise<string> {
+  let value: string | undefined;
+  try {
+    const out = await new SSMClient({}).send(new GetParameterCommand({ Name: SECRET_PARAMETER, WithDecryption: true }));
+    value = out.Parameter?.Value;
+  } catch (err: any) {
+    // err.name only: AWS error messages can carry the role ARN (account id).
+    throw new Error(`could not read SSM parameter ${SECRET_PARAMETER} (${err?.name ?? 'Error'})`);
+  }
+  if (!value) throw new Error(`SSM parameter ${SECRET_PARAMETER} is empty`);
+  return value;
 }
 
 function env(name: string): string {
