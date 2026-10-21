@@ -43,7 +43,9 @@ The browser opens a Cognito sign-in page. After you sign in, run Prompt A and Pr
 
 To clean up afterwards: `claude mcp remove things-test`.
 
-## 3. ChatGPT (developer mode)
+## 3. ChatGPT (custom MCP server)
+
+> Current UI (2026-10): **chatgpt.com/plugins › + › Add custom MCP server** › name, Public endpoint URL, OAuth (leave client fields empty) › *I understand and want to continue* › *Create as a plugin*. In a chat, type `@` and pick the plugin. The older developer-mode steps below may no longer match.
 
 1. **Settings › Apps & Connectors › Advanced settings** → turn on **Developer mode**.
 2. **Settings › Apps & Connectors › Create** (or the *+* in the connectors list):
@@ -64,7 +66,7 @@ To clean up afterwards: `claude mcp remove things-test`.
 | Claude (web) | | | | |
 | Claude Desktop | not recorded (re-check) | **yes**: prompt appeared | included **Always allow** (accidentally chosen) | Tool calls shown as "Listed things-test things" / "Used things-test". Claude noticed the delete didn't stick (expected: the test server is stateless) and promised to ask in chat before future deletes |
 | Claude Code | | | | |
-| ChatGPT (developer mode) | | | | |
+| ChatGPT (Plugins › custom MCP server) | **no**: ran straight away | **yes**: "Allow ChatGPT to use things-test? Deletes the persistent item named \"banana\"." | **Deny / Allow once** (no always-allow) | OAuth via the bridge worked (CIMD). Evidence that ChatGPT honours `readOnlyHint`: read ran freely, destructive asked |
 
 ### Things worth noting while you test
 - Did the app show the tool's **title** ("List things" / "Delete thing") or its **name**?
