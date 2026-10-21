@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
+	"github.com/marianina8/audiofile-api/internal/model"
 	"github.com/marianina8/audiofile-api/internal/slug"
 )
 
@@ -13,11 +15,40 @@ func TestListArtists(t *testing.T) {
 	m := decode(t, e.do("GET", "/artists", ""))
 	want := []any{
 		map[string]any{"id": "beat-doctor", "name": "Beat Doctor", "track_count": 3.0},
-		map[string]any{"id": "ghost", "name": "Ghost", "track_count": 0.0},
 		map[string]any{"id": "nova", "name": "Nova", "track_count": 2.0},
 	}
 	if !reflect.DeepEqual(m["items"], want) {
 		t.Errorf("items = %v, want %v", m["items"], want)
+	}
+}
+
+// An artist or album with no ready tracks (e.g. its only track was deleted)
+// is hidden from the lists but still reachable by id.
+func TestEmptyArtistsAndAlbumsHiddenFromLists(t *testing.T) {
+	e := newEnv()
+	seedLibrary(t, e)
+	empty := slug.AlbumID("ghost", "Gone")
+	if err := e.st.EnsureAlbum(context.Background(), model.Album{ID: empty, Title: "Gone", ArtistID: "ghost", Artist: "Ghost"}); err != nil {
+		t.Fatal(err)
+	}
+	if code := e.do("GET", "/albums/"+empty, "").Code; code != 200 {
+		t.Errorf("GET /albums/%s = %d, want 200", empty, code)
+	}
+	for _, it := range decode(t, e.do("GET", "/artists", ""))["items"].([]any) {
+		if it.(map[string]any)["id"] == "ghost" {
+			t.Error("ghost (no ready tracks) listed in /artists")
+		}
+	}
+	if code := e.do("GET", "/artists/ghost", "").Code; code != 200 {
+		t.Errorf("GET /artists/ghost = %d, want 200", code)
+	}
+	for _, it := range decode(t, e.do("GET", "/albums", ""))["items"].([]any) {
+		if it.(map[string]any)["track_count"] == 0.0 {
+			t.Errorf("empty album listed in /albums: %v", it)
+		}
+		if it.(map[string]any)["id"] == empty {
+			t.Error("album with no ready tracks listed in /albums")
+		}
 	}
 }
 

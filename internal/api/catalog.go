@@ -88,6 +88,9 @@ func (s *server) listArtists(w http.ResponseWriter, r *http.Request) {
 	})
 	items := make([]artistView, 0, len(artists))
 	for _, a := range artists {
+		if counts[a.ID] == 0 {
+			continue // lists hide artists with no ready tracks; GET /artists/{id} still returns them
+		}
 		items = append(items, artistView{a.ID, a.Name, counts[a.ID]})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
@@ -172,7 +175,14 @@ func (s *server) listAlbums(w http.ResponseWriter, r *http.Request) {
 		}
 		return x.ID < y.ID
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"items": albumViews(albums, ready)})
+	items := albumViews(albums, ready)
+	nonEmpty := items[:0]
+	for _, a := range items {
+		if a.TrackCount > 0 { // lists hide albums with no ready tracks
+			nonEmpty = append(nonEmpty, a)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": nonEmpty})
 }
 
 func (s *server) getAlbum(w http.ResponseWriter, r *http.Request) {
