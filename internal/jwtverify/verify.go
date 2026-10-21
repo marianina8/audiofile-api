@@ -33,6 +33,7 @@ const (
 	clockSkew        = 30 * time.Second
 	jwksRefresh      = time.Hour
 	fetchTimeout     = 3 * time.Second
+	failCooldown     = 5 * time.Second
 	minUnknownKidGap = time.Minute
 )
 
@@ -47,17 +48,19 @@ type Claims struct {
 type Verifier struct {
 	issuer, jwksURL string
 	refreshGap      time.Duration
+	failGap         time.Duration // cooldown after a failed JWKS fetch
 
 	sf          singleflight.Group
 	mu          sync.Mutex
 	cache       *jwk.Cache
 	lastRefresh time.Time
+	lastFail    time.Time
 }
 
 // New returns a Verifier for issuer, fetching keys from jwksURL
 // (Cognito: <issuer>/.well-known/jwks.json). The JWKS is fetched lazily.
 func New(issuer, jwksURL string) *Verifier {
-	return &Verifier{issuer: issuer, jwksURL: jwksURL, refreshGap: minUnknownKidGap}
+	return &Verifier{issuer: issuer, jwksURL: jwksURL, refreshGap: minUnknownKidGap, failGap: failCooldown}
 }
 
 // ensureCache creates the cache and registers the JWKS URL without fetching
@@ -88,10 +91,24 @@ func (v *Verifier) ensureCache(ctx context.Context) (*jwk.Cache, error) {
 // fetch re-fetches the JWKS. Concurrent callers share one bounded fetch, and
 // each caller returns as soon as its own ctx is done.
 func (v *Verifier) fetch(ctx context.Context, c *jwk.Cache) (jwk.Set, error) {
+	v.mu.Lock()
+	cooling := !v.lastFail.IsZero() && time.Since(v.lastFail) < v.failGap
+	v.mu.Unlock()
+	if cooling {
+		return nil, errors.New("jwks fetch failed recently")
+	}
 	ch := v.sf.DoChan("jwks", func() (any, error) {
 		fctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 		defer cancel()
-		return c.Refresh(fctx, v.jwksURL)
+		set, err := c.Refresh(fctx, v.jwksURL)
+		v.mu.Lock()
+		if err != nil {
+			v.lastFail = time.Now()
+		} else {
+			v.lastFail = time.Time{}
+		}
+		v.mu.Unlock()
+		return set, err
 	})
 	select {
 	case <-ctx.Done():

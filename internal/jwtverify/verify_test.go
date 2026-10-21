@@ -259,6 +259,7 @@ func TestJWKSOutageThenRecovery(t *testing.T) {
 	}))
 	defer srv.Close()
 	v := New(testIssuer, srv.URL)
+	v.failGap = 200 * time.Millisecond
 	tok := mint(t, priv, tokOpts{})
 
 	start := time.Now()
@@ -288,8 +289,48 @@ func TestJWKSOutageThenRecovery(t *testing.T) {
 	}
 
 	down.Store(false)
+	time.Sleep(v.failGap + 50*time.Millisecond)
 	if _, err := v.Verify(context.Background(), tok, testAudience, ""); err != nil {
 		t.Fatalf("should recover: %v", err)
+	}
+}
+
+func TestFailureCooldown(t *testing.T) {
+	priv, pub := newKey(t, testKid)
+	var down atomic.Bool
+	down.Store(true)
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		if down.Load() {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		set := jwk.NewSet()
+		_ = set.AddKey(pub)
+		_ = json.NewEncoder(w).Encode(set)
+	}))
+	defer srv.Close()
+	v := New(testIssuer, srv.URL)
+	v.failGap = 500 * time.Millisecond
+	tok := mint(t, priv, tokOpts{})
+
+	if _, err := v.Verify(context.Background(), tok, testAudience, ""); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("got %v", err)
+	}
+	base := hits.Load() // includes registration's background fetch
+	for i := 0; i < 20; i++ {
+		if _, err := v.Verify(context.Background(), tok, testAudience, ""); !errors.Is(err, ErrUnavailable) {
+			t.Fatalf("got %v", err)
+		}
+	}
+	if n := hits.Load(); n != base {
+		t.Fatalf("%d fetches during cooldown, want 0", n-base)
+	}
+	down.Store(false)
+	time.Sleep(600 * time.Millisecond)
+	if _, err := v.Verify(context.Background(), tok, testAudience, ""); err != nil {
+		t.Fatalf("should recover after cooldown: %v", err)
 	}
 }
 
