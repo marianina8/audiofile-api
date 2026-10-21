@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -69,9 +71,11 @@ func newJWKS(t *testing.T, pubs ...jwk.Key) *jwksServer {
 type tokOpts struct {
 	issuer  string
 	aud     any
+	noAud   bool
 	groups  []string
 	use     string
 	exp     time.Time
+	nbf     time.Time
 	hmac    bool
 	kid     string
 	omitKid bool
@@ -99,11 +103,16 @@ func mint(t *testing.T, priv jwk.Key, o tokOpts) string {
 		Subject("user-123").
 		Expiration(o.exp).
 		IssuedAt(time.Now().Add(-time.Minute)).
-		Claim("aud", o.aud).
 		Claim("token_use", o.use).
 		Claim("client_id", "client-abc").
 		Claim("scope", "audiofile/read audiofile/write").
 		Claim("cognito:groups", o.groups)
+	if !o.noAud {
+		b = b.Claim("aud", o.aud)
+	}
+	if !o.nbf.IsZero() {
+		b = b.NotBefore(o.nbf)
+	}
 	tok, err := b.Build()
 	if err != nil {
 		t.Fatal(err)
@@ -121,7 +130,12 @@ func mint(t *testing.T, priv jwk.Key, o tokOpts) string {
 	if kid == "" {
 		kid = testKid
 	}
-	_ = key.Set(jwk.KeyIDKey, kid)
+	key, _ = key.Clone()
+	if o.omitKid {
+		_ = key.Remove(jwk.KeyIDKey)
+	} else {
+		_ = key.Set(jwk.KeyIDKey, kid)
+	}
 	signed, err := jwt.Sign(tok, jwt.WithKey(alg, key))
 	if err != nil {
 		t.Fatal(err)
@@ -178,6 +192,13 @@ func TestVerifyErrors(t *testing.T) {
 		{"hs256", mint(t, priv, tokOpts{hmac: true}), testAudience, "mcp-users", ErrInvalid},
 		{"id token", mint(t, priv, tokOpts{use: "id"}), testAudience, "mcp-users", ErrInvalid},
 		{"same kid different key", mint(t, wrongPriv, tokOpts{}), testAudience, "mcp-users", ErrInvalid},
+		{"aud absent", mint(t, priv, tokOpts{noAud: true}), testAudience, "", ErrAudience},
+		{"empty expected audience", mint(t, priv, tokOpts{aud: []string{""}}), "", "", ErrAudience},
+		{"missing kid", mint(t, priv, tokOpts{omitKid: true}), testAudience, "", ErrInvalid},
+		{"alg none", noneToken(t), testAudience, "", ErrInvalid},
+		{"future nbf", mint(t, priv, tokOpts{nbf: time.Now().Add(time.Hour)}), testAudience, "", ErrInvalid},
+		{"issuer trailing slash", mint(t, priv, tokOpts{issuer: testIssuer + "/"}), testAudience, "", ErrInvalid},
+		{"json serialization", `{"payload":"e30","signatures":[]}`, testAudience, "", ErrInvalid},
 		{"garbage", "not-a-jwt", testAudience, "", ErrInvalid},
 		{"empty", "", testAudience, "", ErrInvalid},
 	}
@@ -191,6 +212,100 @@ func TestVerifyErrors(t *testing.T) {
 				t.Fatal("error message contains token")
 			}
 		})
+	}
+}
+
+func noneToken(t *testing.T) string {
+	t.Helper()
+	enc := base64.RawURLEncoding.EncodeToString
+	hdr := enc([]byte(`{"alg":"none","kid":"` + testKid + `"}`))
+	pl, _ := json.Marshal(map[string]any{
+		"iss": testIssuer, "sub": "x", "aud": testAudience, "token_use": "access",
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	return hdr + "." + enc(pl) + "."
+}
+
+func TestWithinSkewExpiryAccepted(t *testing.T) {
+	v, priv, _ := setup(t)
+	tok := mint(t, priv, tokOpts{exp: time.Now().Add(-10 * time.Second)})
+	if _, err := v.Verify(context.Background(), tok, testAudience, ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestJWKWithoutAlgVerifies(t *testing.T) {
+	priv, pub := newKey(t, testKid)
+	_ = pub.Remove(jwk.AlgorithmKey)
+	srv := newJWKS(t, pub)
+	v := New(testIssuer, srv.URL)
+	if _, err := v.Verify(context.Background(), mint(t, priv, tokOpts{}), testAudience, ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestJWKSOutageThenRecovery(t *testing.T) {
+	priv, pub := newKey(t, testKid)
+	var down atomic.Bool
+	down.Store(true)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down.Load() {
+			http.Error(w, "boom", http.StatusInternalServerError)
+			return
+		}
+		set := jwk.NewSet()
+		_ = set.AddKey(pub)
+		_ = json.NewEncoder(w).Encode(set)
+	}))
+	defer srv.Close()
+	v := New(testIssuer, srv.URL)
+	tok := mint(t, priv, tokOpts{})
+
+	start := time.Now()
+	_, err := v.Verify(context.Background(), tok, testAudience, "")
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("got %v, want ErrUnavailable", err)
+	}
+	if d := time.Since(start); d > fetchTimeout+time.Second {
+		t.Fatalf("took %v", d)
+	}
+
+	// Concurrent callers during the outage all return promptly.
+	var wg sync.WaitGroup
+	start = time.Now()
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := v.Verify(context.Background(), tok, testAudience, ""); !errors.Is(err, ErrUnavailable) {
+				t.Errorf("got %v, want ErrUnavailable", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if d := time.Since(start); d > fetchTimeout+time.Second {
+		t.Fatalf("concurrent calls took %v", d)
+	}
+
+	down.Store(false)
+	if _, err := v.Verify(context.Background(), tok, testAudience, ""); err != nil {
+		t.Fatalf("should recover: %v", err)
+	}
+}
+
+func TestHungJWKSBoundedByContext(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-release }))
+	defer srv.Close()
+	defer close(release)
+	priv, _ := newKey(t, testKid)
+	v := New(testIssuer, srv.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := v.Verify(ctx, mint(t, priv, tokOpts{}), testAudience, "")
+	if !errors.Is(err, ErrUnavailable) || time.Since(start) > 2*time.Second {
+		t.Fatalf("err=%v after %v", err, time.Since(start))
 	}
 }
 
@@ -210,11 +325,21 @@ func TestKeyRotationRefreshesOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Initial load: registration's background fetch plus the explicit one.
+	base := srv.hits.Load()
+	if base < 1 || base > 2 {
+		t.Fatalf("initial load fetched %d times, want 1 or 2", base)
+	}
+
 	// Rotate: new key published after the verifier cached the old set.
 	priv2, pub2 := newKey(t, "kid-2")
 	srv.keys.Store([]jwk.Key{pub1, pub2})
 	if _, err := v.Verify(context.Background(), mint(t, priv2, tokOpts{kid: "kid-2"}), testAudience, ""); err != nil {
 		t.Fatalf("rotated key should verify after refresh: %v", err)
+	}
+
+	if n := srv.hits.Load(); n != base+1 {
+		t.Fatalf("rotation fetched %d times total, want %d", n, base+1)
 	}
 
 	// Unknown kid storm: refreshes are rate limited.
@@ -226,7 +351,7 @@ func TestKeyRotationRefreshesOnce(t *testing.T) {
 			t.Fatalf("got %v", err)
 		}
 	}
-	if d := srv.hits.Load() - before; d > 1 {
-		t.Fatalf("unknown kid caused %d JWKS fetches, want <= 1", d)
+	if d := srv.hits.Load() - before; d != 0 {
+		t.Fatalf("unknown kid caused %d extra JWKS fetches within the rate limit, want 0", d)
 	}
 }
