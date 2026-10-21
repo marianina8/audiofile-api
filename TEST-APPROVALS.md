@@ -64,10 +64,17 @@ To clean up afterwards: `claude mcp remove things-test`.
 | App | Asked before `list_things`? | Asked before `delete_thing`? | Options offered | Notes |
 |---|---|---|---|---|
 | Claude (web) | | | | |
-| Claude Desktop | not recorded (re-check) | **yes**: prompt appeared | included **Always allow** (accidentally chosen) | Tool calls shown as "Listed things-test things" / "Used things-test". Claude noticed the delete didn't stick (expected: the test server is stateless) and promised to ask in chat before future deletes |
+| Claude Desktop | **no** | **no** (after remove + re-add) | per-tool setting; both tools showed **Always allow** in connector settings | First run: a prompt with Always allow appeared for delete; after re-adding, both tools defaulted to Always allow and ran without asking. Desktop does not appear to use `readOnlyHint`/`destructiveHint` to pick defaults; the user must set "Needs approval" per tool |
 | Claude Code (default mode) | **yes** | **yes** | standard "Do you want to proceed?" permission prompt | Prompts for every MCP tool regardless of `readOnlyHint`/`destructiveHint`; in auto mode it asked for neither (first run). After the delete Claude reported "apple and cherry are still there" without banana, which is wrong (the stateless test server always returns all three); it didn't re-check |
 | ChatGPT (Plugins › custom MCP server) | **no**: ran straight away | **yes**: "Allow ChatGPT to use things-test? Deletes the persistent item named \"banana\"." | **Deny / Allow once** (no always-allow) | OAuth via the bridge worked (CIMD). Evidence that ChatGPT honours `readOnlyHint`: read ran freely, destructive asked |
 
+
+### Summary across apps (2026-10-21)
+| App | Uses the hints? | Observed |
+|---|---|---|
+| ChatGPT | yes, plus its own judgement from names | read-only ran freely, destructive asked; with no hints it still asked before delete but not before create |
+| Claude Code | no | default mode asks for every tool; auto mode asks for none |
+| Claude Desktop | no (for defaults) | both tools defaulted to Always allow; approval is a per-tool user setting |
 
 ### ChatGPT with the generated server (no annotations at all), 2026-10-21
 | Tool (generated, unmarked) | Kind | Asked first? |
