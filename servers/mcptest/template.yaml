@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: mcp-test - throwaway two-tool MCP server behind the reusable mcp-host stack (spec §10)
+
+Resources:
+  # Receives REST proxy events that carry the bearer token: never log them.
+  McpTestFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      CodeUri: ../..
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures: [arm64]
+      MemorySize: 128
+      Timeout: 10
+
+  McpTestLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${McpTestFunction}
+      RetentionInDays: 14
+
+  McpHost:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ../../mcphost/template.yaml
+      Parameters:
+        ServerName: things-test
+        ServerFunctionArn: !GetAtt McpTestFunction.Arn
+        BridgeUrl: !ImportValue audiofile-auth-BridgeUrl
+        IssuerUrl: !ImportValue audiofile-api-IssuerUrl
+        UserPoolId: !ImportValue audiofile-api-UserPoolId
+
+Outputs:
+  McpUrl:
+    Description: MCP server URL to add as a connector
+    Value: !GetAtt McpHost.Outputs.McpUrl

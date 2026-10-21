@@ -1,4 +1,4 @@
-.PHONY: test test-dynamo lint-spec build layer validate validate-auth build-auth validate-mcphost build-mcphost build-ApiFunction build-ProcessorFunction build-BridgeFunction build-AuthorizerFunction
+.PHONY: test test-dynamo lint-spec build layer validate validate-auth build-auth validate-mcphost build-mcphost build-ApiFunction build-ProcessorFunction build-BridgeFunction build-AuthorizerFunction build-McpTestFunction validate-mcptest build-mcptest
 
 LAMBDA_GO := GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags lambda.norpc -trimpath -ldflags="-s -w"
 
@@ -59,3 +59,14 @@ build-BridgeFunction:
 
 build-AuthorizerFunction:
 	$(LAMBDA_GO) -o $(ARTIFACTS_DIR)/bootstrap ./cmd/mcpauthorizer
+
+build-McpTestFunction:
+	$(LAMBDA_GO) -o $(ARTIFACTS_DIR)/bootstrap ./servers/mcptest
+
+# The throwaway test MCP server; nests mcphost/template.yaml, so building it
+# also builds the mcp-host AuthorizerFunction.
+validate-mcptest:
+	sam validate --lint -t servers/mcptest/template.yaml
+
+build-mcptest: validate-mcptest
+	cd servers/mcptest && sam build -t template.yaml

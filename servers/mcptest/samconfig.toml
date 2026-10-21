@@ -1,0 +1,14 @@
+# SAM CLI configuration for the throwaway test MCP server. No IDs or secrets.
+version = 0.1
+
+[default.global.parameters]
+stack_name = "mcp-test"
+region = "us-west-2"
+
+[default.build.parameters]
+cached = false
+
+[default.deploy.parameters]
+resolve_s3 = true
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+confirm_changeset = true
