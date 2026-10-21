@@ -62,7 +62,7 @@ To clean up afterwards: `claude mcp remove things-test`.
 | App | Asked before `list_things`? | Asked before `delete_thing`? | Options offered | Notes |
 |---|---|---|---|---|
 | Claude (web) | | | | |
-| Claude Desktop | | | | |
+| Claude Desktop | not recorded (re-check) | **yes**: prompt appeared | included **Always allow** (accidentally chosen) | Tool calls shown as "Listed things-test things" / "Used things-test". Claude noticed the delete didn't stick (expected: the test server is stateless) and promised to ask in chat before future deletes |
 | Claude Code | | | | |
 | ChatGPT (developer mode) | | | | |
 
