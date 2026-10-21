@@ -196,14 +196,14 @@ paths:
   /tracks/{id}/stream:
     get:
       operationId: getTrackStream
-      summary: Get a stream URL
+      summary: Get a track stream link
       security:
         - bearerAuth: []
       parameters:
         - $ref: "#/components/parameters/trackId"
       responses:
         "200":
-          description: A presigned URL for the audio.
+          description: A short player link for the track.
           content:
             application/json:
               schema:
@@ -218,6 +218,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /tracks/{id}/status:
     get:
       operationId: getTrackStatus
@@ -933,6 +935,9 @@ components:
     NotFound:
       description: Not found
       content: *a1
+    Conflict:
+      description: Conflict
+      content: *a1
   parameters:
     playlistId:
       name: id
@@ -967,7 +972,7 @@ components:
           properties:
             code:
               type: string
-              enum: [ bad_request, not_found, payload_too_large, internal ]
+              enum: [ bad_request, not_found, conflict, payload_too_large, internal ]
             message:
               type: string
     Audio:

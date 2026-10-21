@@ -265,15 +265,45 @@ func TestDeleteTrack_RemovesFromPlaylists(t *testing.T) {
 
 func TestStream(t *testing.T) {
 	e := newEnv()
-	seedTrack(t, e, "a", nil)
+	seedTrack(t, e, "a", func(tr *model.Track) { tr.Title = "Solo Song" })
 	rec := e.do("GET", "/tracks/a/stream", "")
 	wantStatus(t, rec, 200)
 	m := decode(t, rec)
-	if u, _ := m["url"].(string); !strings.Contains(u, "tracks/a.mp3") || !strings.Contains(u, "ttl=900") {
-		t.Errorf("url = %v", m["url"])
+	u, _ := m["url"].(string)
+	pid := strings.TrimPrefix(u, "https://example.com/play/")
+	if !pidPattern.MatchString(pid) {
+		t.Fatalf("url = %v, want a /play link with a 22-char id", m["url"])
 	}
-	if m["expires_at"] != "2026-10-20T12:15:00Z" {
+	if m["expires_at"] != "2026-10-20T13:00:00Z" {
 		t.Errorf("expires_at = %v", m["expires_at"])
+	}
+	pages := playerPages(t, e)
+	if len(pages) != 1 {
+		t.Fatalf("player objects = %d, want 1", len(pages))
+	}
+	html := pages["players/"+pid+".html"]
+	if !strings.Contains(html, "Solo Song") {
+		t.Error("page missing track title")
+	}
+	if n := strings.Count(html, "tracks/a.mp3"); n != 1 {
+		t.Errorf("track urls = %d, want 1", n)
+	}
+	if n := strings.Count(html, "?ttl=4500"); n != 1 {
+		t.Errorf("urls with ttl=4500 = %d, want 1", n)
+	}
+	if got := e.bl.Metadata["players/"+pid+".html"]["expires-at"]; got != "2026-10-20T13:00:00Z" {
+		t.Errorf("expires-at metadata = %q", got)
+	}
+	// the link works even when a client appends a query string
+	wantStatus(t, e.do("GET", "/play/"+pid+"?utm_source=chatgpt.com", ""), 200)
+}
+
+func TestStream_NotReadyAndUnknown(t *testing.T) {
+	e := newEnv()
+	seedTrack(t, e, "p", func(tr *model.Track) { tr.Status = model.StatusProcessing })
+	wantErrCode(t, e.do("GET", "/tracks/p/stream", ""), 409, "conflict")
+	if len(playerPages(t, e)) != 0 {
+		t.Error("page stored for a track that is not ready")
 	}
 	wantErrCode(t, e.do("GET", "/tracks/nope/stream", ""), 404, "not_found")
 }

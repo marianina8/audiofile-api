@@ -265,21 +265,24 @@ func (s *server) deleteTrack(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// getTrackStream answers with a short single-track player link rather than a
+// raw presigned URL, which breaks when a client appends query parameters.
 func (s *server) getTrackStream(w http.ResponseWriter, r *http.Request) {
 	t, err := s.Store.GetTrack(r.Context(), r.PathValue("id"))
 	if err != nil {
 		storeError(w, err, "track")
 		return
 	}
-	url, err := s.Blob.PresignGet(r.Context(), t.S3Key, presignTTL)
+	if t.Status != model.StatusReady {
+		writeError(w, http.StatusConflict, "conflict", "track is not ready")
+		return
+	}
+	url, expires, err := s.publishPlayer(r, t.Title, []model.Track{t})
 	if err != nil {
 		internalError(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{
-		"url":        url,
-		"expires_at": s.Now().UTC().Add(presignTTL).Format(time.RFC3339),
-	})
+	writeJSON(w, http.StatusOK, map[string]string{"url": url, "expires_at": expires})
 }
 
 func (s *server) getTrackStatus(w http.ResponseWriter, r *http.Request) {

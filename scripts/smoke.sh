@@ -197,10 +197,11 @@ TAG=smoke
 step POST "/tracks/$TRACK_A/tags" 2xx --json "{\"tags\":[\"$TAG\"]}"
 step DELETE "/tracks/$TRACK_A/tags/$TAG" 204
 
-# The stream URL is presigned: fetch only the headers' status, no auth header.
+# The stream URL is a public player link: expect an HTML page, no auth header.
 printf 'url = "%s"\n' "$STREAM_URL" >"$WORK/get.cfg"
-code=$(curl -sS -o /dev/null -w '%{http_code}' -r 0-99 -K "$WORK/get.cfg") || fail GET "(stream url)" 2xx "curl-error"
-check GET "(stream url)" 2xx "$code"
+code=$(curl -sS -o /dev/null -w '%{http_code} %{content_type}' -K "$WORK/get.cfg") || fail GET "(stream url)" 200 "curl-error"
+check GET "(stream url)" 200 "${code%% *}"
+case "${code#* }" in text/html*) ;; *) fail GET "(stream url)" text/html "${code#* }" ;; esac
 
 step POST /playlists 201 --json "{\"name\":\"audiofile-smoke\",\"description\":\"temporary\",\"track_ids\":[\"$TRACK_A\"]}"
 PLAYLIST=$(jget .id)
