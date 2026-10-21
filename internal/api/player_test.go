@@ -1,7 +1,14 @@
 package api
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"github.com/marianina8/audiofile-api/internal/blob"
+	"github.com/marianina8/audiofile-api/internal/store"
+	"log"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -238,5 +245,27 @@ func TestNewSecret(t *testing.T) {
 			t.Fatalf("duplicate secret %q", s)
 		}
 		seen[s] = true
+	}
+}
+
+type failingGetBlob struct{ *blob.Fake }
+
+func (failingGetBlob) Get(context.Context, string) ([]byte, map[string]string, error) {
+	return nil, nil, errors.New("AccessDenied: secret detail")
+}
+
+func TestGetPlayerPage_BlobErrorIs404AndLogged(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	h := New(Deps{Store: store.NewMemory(), Blob: failingGetBlob{blob.NewFake()}, Now: func() time.Time { return fixedNow }})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/play/AAAAAAAAAAAAAAAAAAAAAA", nil))
+	wantErrCode(t, rec, 404, "not_found")
+	if !strings.Contains(buf.String(), "play: blob get failed") {
+		t.Errorf("not logged: %q", buf.String())
+	}
+	if strings.Contains(buf.String(), "AAAAAAAAAAAAAAAAAAAAAA") || strings.Contains(buf.String(), "secret detail") {
+		t.Errorf("log leaks key or error text: %q", buf.String())
 	}
 }

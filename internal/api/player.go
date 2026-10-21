@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"html/template"
+	"log"
 	"math"
 	"net/http"
 	"regexp"
@@ -132,7 +133,10 @@ func (s *server) getPlayerPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		internalError(w)
+		// Same 404 as an unknown link (never reveal existence), but leave a
+		// trace of the error class so real outages are visible.
+		log.Printf("play: blob get failed: %T", err)
+		notFound(w)
 		return
 	}
 	exp, err := time.Parse(time.RFC3339, meta["expires-at"])

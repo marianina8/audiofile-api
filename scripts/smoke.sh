@@ -122,6 +122,7 @@ wait_ready() { # wait_ready <track id>; up to 90 s
 echo "== no token =="
 unauth GET /health 200
 unauth GET /play/smoke-none 404
+unauth GET /play/AAAAAAAAAAAAAAAAAAAAAA 404
 for r in "${ROUTES[@]}"; do
   method=${r%% *}
   tmpl=${r#* }
