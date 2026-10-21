@@ -68,6 +68,18 @@ To clean up afterwards: `claude mcp remove things-test`.
 | Claude Code | | | | |
 | ChatGPT (Plugins › custom MCP server) | **no**: ran straight away | **yes**: "Allow ChatGPT to use things-test? Deletes the persistent item named \"banana\"." | **Deny / Allow once** (no always-allow) | OAuth via the bridge worked (CIMD). Evidence that ChatGPT honours `readOnlyHint`: read ran freely, destructive asked |
 
+
+### ChatGPT with the generated server (no annotations at all), 2026-10-21
+| Tool (generated, unmarked) | Kind | Asked first? |
+|---|---|---|
+| `listTracks` | read | **no** |
+| `createPlaylist` (x2) | write | **no** |
+| `deletePlaylist` | destructive | **yes** |
+
+Takeaway: ChatGPT does not rely only on `readOnlyHint`/`destructiveHint`. With no marks it still judged a delete risky, from the tool's name and description, but let unmarked **writes** (create) through without asking. On `things-test`, the read-only-marked tool ran freely and the destructive-marked one asked (Deny / Allow once).
+
+Also found: ChatGPT appends `?utm_source=chatgpt.com` to links it shows, which breaks raw presigned S3 links (SignatureDoesNotMatch). Short `/play/...` links are unaffected.
+
 ### Things worth noting while you test
 - Did the app show the tool's **title** ("List things" / "Delete thing") or its **name**?
 - Did "Always allow" on `list_things` carry over to `delete_thing`? (It shouldn't.)
