@@ -642,6 +642,22 @@ Resources:
                 - audiofile/read
                 - aws.cognito.signin.user.admin
 
+  # Log groups are named after the functions so Lambda uses them instead of
+  # creating unmanaged never-expire groups. Without LoggingConfig (which would
+  # make the function and group depend on each other) they are created after
+  # the function and before its first invocation.
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ApiFunction}
+      RetentionInDays: 14
+
+  ProcessorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ProcessorFunction}
+      RetentionInDays: 14
+
   # ---------- Cost guard ----------
   Budget:
     Type: AWS::Budgets::Budget

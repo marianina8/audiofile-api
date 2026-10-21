@@ -324,6 +324,20 @@ func resource(tpl *yaml.Node, name string) *yaml.Node {
 	return child(child(child(tpl, "Resources"), name), "Properties")
 }
 
+// hasValue reports whether a scalar node, or any scalar in a sequence node,
+// satisfies match.
+func hasValue(n *yaml.Node, match func(string) bool) bool {
+	if n.Kind == yaml.ScalarNode {
+		return match(n.Value)
+	}
+	for _, c := range n.Content {
+		if c.Kind == yaml.ScalarNode && match(c.Value) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestTemplateSecurity(t *testing.T) {
 	tpl := readYAML(t, "../../template.yaml")
 
@@ -354,6 +368,50 @@ func TestTemplateSecurity(t *testing.T) {
 	if got := scalar(child(route, "ThrottlingBurstLimit")); got != "40" {
 		t.Errorf("ThrottlingBurstLimit = %q, want 40", got)
 	}
+
+	cli := resource(tpl, "CliClient")
+	if got := scalar(child(cli, "GenerateSecret")); got == "true" {
+		t.Error("CliClient must not have a secret (GenerateSecret true)")
+	}
+	if child(cli, "AllowedOAuthFlows") != nil {
+		t.Error("CliClient must not enable OAuth flows")
+	}
+
+	machine := child(resource(tpl, "MachineClient"), "AllowedOAuthFlows")
+	var flows []string
+	if machine != nil {
+		for _, f := range machine.Content {
+			flows = append(flows, f.Value)
+		}
+	}
+	if !reflect.DeepEqual(flows, []string{"client_credentials"}) {
+		t.Errorf("MachineClient AllowedOAuthFlows = %v, want [client_credentials]", flows)
+	}
+
+	for _, name := range []string{"ApiLogGroup", "ProcessorLogGroup"} {
+		if got := scalar(child(resource(tpl, name), "RetentionInDays")); got != "14" {
+			t.Errorf("%s RetentionInDays = %q, want 14", name, got)
+		}
+	}
+
+	var wildcard func(n *yaml.Node)
+	wildcard = func(n *yaml.Node) {
+		if n == nil {
+			return
+		}
+		if n.Kind == yaml.MappingNode {
+			action, res := child(n, "Action"), child(n, "Resource")
+			if action != nil && res != nil && hasValue(action, func(v string) bool {
+				return v == "*" || v == "s3:*" || v == "dynamodb:*"
+			}) && hasValue(res, func(v string) bool { return v == "*" }) {
+				t.Errorf("IAM statement at line %d grants a wildcard action on Resource \"*\"", n.Line)
+			}
+		}
+		for _, c := range n.Content {
+			wildcard(c)
+		}
+	}
+	wildcard(child(tpl, "Resources"))
 
 	raw, err := os.ReadFile("../../template.yaml")
 	if err != nil {
