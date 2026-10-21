@@ -63,7 +63,7 @@ func TestPlayer(t *testing.T) {
 		if !strings.Contains(html, "128") || strings.Contains(html, "127.6") {
 			t.Error("bpm not rounded to integer")
 		}
-		for _, want := range []string{`name="viewport"`, `content="noindex"`, `content="no-referrer"`, `<audio controls`, `preload="auto"`, `new Audio()`, `nextAudio`, `Loading`, `load this track`} {
+		for _, want := range []string{`name="viewport"`, `content="noindex"`, `content="no-referrer"`, `<audio controls`, `preload="auto"`, `new Audio()`, `nextAudio`, `Loading`, `load this track`, `dispose(`, `Tap \u25B6 to continue`, `el.volume = old.volume`} {
 			if !strings.Contains(html, want) {
 				t.Errorf("page missing %s", want)
 			}

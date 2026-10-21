@@ -49,6 +49,7 @@ li.current .num { color: var(--accent); font-weight: 700; }
 .status { display: block; color: var(--accent); font-size: .8rem; }
 .status:empty { display: none; }
 .status.err { color: #d64545; }
+@media (prefers-color-scheme: dark) { .status.err { color: #ff8a8a; } }
 .bpm { flex: none; color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; }
 </style>
 </head>
@@ -107,9 +108,15 @@ function show(i) {
   setStatus("");
 }
 
+// Stop an unused element from downloading and release its resources.
+function dispose(el) {
+  try { el.pause(); el.removeAttribute("src"); el.load(); } catch (e) {}
+}
+
 function prefetch(i) {
-  if (i >= tracks.length) { nextAudio = null; nextIdx = -1; return; }
   if (nextAudio && nextIdx === i) return;
+  if (nextAudio) { dispose(nextAudio); nextAudio = null; nextIdx = -1; }
+  if (i >= tracks.length) return;
   nextAudio = new Audio();
   nextAudio.preload = "auto";
   nextAudio.src = tracks[i].url;
@@ -122,17 +129,31 @@ function load(i, play) {
     // Swap the already-buffered element into the page in place of the old one.
     const el = nextAudio;
     nextAudio = null; nextIdx = -1;
-    audio.pause();
+    const old = audio;
+    const hadFocus = document.activeElement === old;
+    el.volume = old.volume;
+    el.muted = old.muted;
+    el.playbackRate = old.playbackRate;
+    old.pause();
     el.controls = true;
     el.id = "audio";
-    audio.replaceWith(el);
+    old.replaceWith(el);
     audio = el;
     bind(el);
-    if (el.readyState >= 3) setStatus("");
+    dispose(old);
+    if (hadFocus) el.focus();
+    if (el.error) setStatus("Couldn\u2019t load this track", true);
+    else if (el.readyState < 3) setStatus("Loading\u2026");
   } else {
     audio.src = tracks[i].url;
   }
-  if (play) audio.play().catch(() => {});
+  if (play) {
+    const el = audio;
+    const pr = el.play();
+    if (pr && pr.catch) pr.catch(err => {
+      if (el === audio && err && err.name === "NotAllowedError") setStatus("Tap \u25B6 to continue");
+    });
+  }
   prefetch(i + 1);
 }
 
