@@ -77,3 +77,22 @@ func TestFake(t *testing.T) {
 		t.Errorf("delete missing: %v", err)
 	}
 }
+
+func TestFake_GetAndMetadata(t *testing.T) {
+	ctx := context.Background()
+	f := NewFake()
+	if _, _, err := f.Get(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if err := f.PutWithMetadata(ctx, "k", "text/html", []byte("abc"), map[string]string{"expires-at": "x"}); err != nil {
+		t.Fatal(err)
+	}
+	body, meta, err := f.Get(ctx, "k")
+	if err != nil || string(body) != "abc" || meta["expires-at"] != "x" {
+		t.Errorf("got %q %v %v", body, meta, err)
+	}
+	_ = f.Delete(ctx, "k")
+	if _, _, err := f.Get(ctx, "k"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("after delete err = %v", err)
+	}
+}

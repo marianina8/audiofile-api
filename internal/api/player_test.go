@@ -1,8 +1,10 @@
 package api
 
 import (
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/marianina8/audiofile-api/internal/model"
 )
@@ -35,7 +37,9 @@ func TestPlayer(t *testing.T) {
 	rec := e.do("POST", "/playlists/"+id+"/player", "")
 	wantStatus(t, rec, 201)
 	m := decode(t, rec)
-	if u, _ := m["url"].(string); !strings.Contains(u, "players/"+id+"/") || !strings.HasSuffix(u, "?ttl=3600") {
+	u, _ := m["url"].(string)
+	pid := strings.TrimPrefix(u, "https://example.com/play/")
+	if !pidPattern.MatchString(pid) {
 		t.Errorf("url = %v", m["url"])
 	}
 	if m["expires_at"] != "2026-10-20T13:00:00Z" {
@@ -47,8 +51,11 @@ func TestPlayer(t *testing.T) {
 		t.Fatalf("player objects = %d, want 1", len(pages))
 	}
 	for key, html := range pages {
-		if !strings.HasPrefix(key, "players/"+id+"/") || !strings.HasSuffix(key, ".html") {
-			t.Errorf("key = %s", key)
+		if key != "players/"+pid+".html" {
+			t.Errorf("key = %s, want players/%s.html", key, pid)
+		}
+		if got := e.bl.Metadata[key]["expires-at"]; got != "2026-10-20T13:00:00Z" {
+			t.Errorf("expires-at metadata = %q", got)
 		}
 		i1, i2 := strings.Index(html, "First Song"), strings.Index(html, "Second Song")
 		if i1 < 0 || i2 < 0 || i1 > i2 {
@@ -116,5 +123,120 @@ func TestPlayer_EscapesTitles(t *testing.T) {
 		if strings.Contains(html, "<script>alert(1)") || strings.Contains(html, "<b>Mix</b>") {
 			t.Error("raw markup leaked")
 		}
+	}
+}
+
+func TestPlayer_PublicBaseURL(t *testing.T) {
+	e := newEnv()
+	seedTrack(t, e, "a", nil)
+	id := newPlaylist(t, e, "a")
+	e.h = New(Deps{Store: e.st, Blob: e.bl, Now: func() time.Time { return fixedNow },
+		NewID: func() string { return "x" }, NewSecret: func() string { return "AAAAAAAAAAAAAAAAAAAAAA" },
+		PublicBaseURL: "https://api.test/"})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/playlists/"+id+"/player", nil)
+	req.Header.Set("X-Forwarded-Host", "evil.test")
+	e.h.ServeHTTP(rec, req)
+	wantStatus(t, rec, 201)
+	if u := decode(t, rec)["url"]; u != "https://api.test/play/AAAAAAAAAAAAAAAAAAAAAA" {
+		t.Errorf("url = %v", u)
+	}
+}
+
+func TestPlayer_IgnoresForwardedHost(t *testing.T) {
+	e := newEnv()
+	seedTrack(t, e, "a", nil)
+	id := newPlaylist(t, e, "a")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/playlists/"+id+"/player", nil)
+	req.Host = "abc.execute-api.us-west-2.amazonaws.com"
+	req.Header.Set("X-Forwarded-Host", "evil.test")
+	e.h.ServeHTTP(rec, req)
+	if u, _ := decode(t, rec)["url"].(string); !strings.HasPrefix(u, "https://abc.execute-api.us-west-2.amazonaws.com/play/") {
+		t.Errorf("url = %v", u)
+	}
+}
+
+func newPlayerPage(t *testing.T, e *env) string {
+	t.Helper()
+	seedTrack(t, e, "a", nil)
+	id := newPlaylist(t, e, "a")
+	rec := e.do("POST", "/playlists/"+id+"/player", "")
+	wantStatus(t, rec, 201)
+	return strings.TrimPrefix(decode(t, rec)["url"].(string), "https://example.com")
+}
+
+func TestGetPlayerPage(t *testing.T) {
+	e := newEnv()
+	path := newPlayerPage(t, e)
+	rec := e.do("GET", path, "")
+	wantStatus(t, rec, 200)
+	want := map[string]string{
+		"Content-Type":            "text/html; charset=utf-8",
+		"Cache-Control":           "no-store",
+		"Referrer-Policy":         "no-referrer",
+		"X-Robots-Tag":            "noindex",
+		"X-Content-Type-Options":  "nosniff",
+		"Content-Security-Policy": playerCSP,
+	}
+	for k, v := range want {
+		if got := rec.Header().Get(k); got != v {
+			t.Errorf("%s = %q, want %q", k, got, v)
+		}
+	}
+	if !strings.Contains(rec.Body.String(), "<audio controls") {
+		t.Error("body is not the player page")
+	}
+	if !strings.Contains(playerCSP, "frame-ancestors 'none'") || !strings.Contains(playerCSP, "media-src https://*.amazonaws.com") {
+		t.Error("csp lost required directives")
+	}
+}
+
+func TestGetPlayerPage_Expired(t *testing.T) {
+	e := newEnv()
+	path := newPlayerPage(t, e)
+	now := fixedNow
+	e.h = New(Deps{Store: e.st, Blob: e.bl, Now: func() time.Time { return now.Add(time.Hour + time.Second) }})
+	rec := e.do("GET", path, "")
+	wantErrCode(t, rec, 404, "not_found")
+	unknown := e.do("GET", "/play/AAAAAAAAAAAAAAAAAAAAAA", "")
+	if rec.Body.String() != unknown.Body.String() {
+		t.Error("expired and unknown bodies differ")
+	}
+}
+
+func TestGetPlayerPage_MissingExpiryIs404(t *testing.T) {
+	e := newEnv()
+	_ = e.bl.Put(t.Context(), "players/AAAAAAAAAAAAAAAAAAAAAA.html", htmlType, []byte("x"))
+	wantErrCode(t, e.do("GET", "/play/AAAAAAAAAAAAAAAAAAAAAA", ""), 404, "not_found")
+}
+
+func TestGetPlayerPage_BadFormatAndUnknown(t *testing.T) {
+	e := newEnv()
+	for _, pid := range []string{"short", "AAAAAAAAAAAAAAAAAAAAAAA", "AAAAAAAAAAAAAAAAAAAA!A", "AAAAAAAAAAAAAAAAAAAA%2E%2E"} {
+		wantErrCode(t, e.do("GET", "/play/"+pid, ""), 404, "not_found")
+	}
+	wantErrCode(t, e.do("GET", "/play/AAAAAAAAAAAAAAAAAAAAAA", ""), 404, "not_found")
+}
+
+func TestPlayRouteIsPublic(t *testing.T) {
+	for _, r := range Routes() {
+		if r.Path == "/play/{pid}" && (r.Method != "GET" || r.Scope != "") {
+			t.Errorf("route = %+v", r)
+		}
+	}
+}
+
+func TestNewSecret(t *testing.T) {
+	seen := map[string]bool{}
+	for i := 0; i < 200; i++ {
+		s := newSecret()
+		if !pidPattern.MatchString(s) {
+			t.Fatalf("secret %q is not 22 base64url chars", s)
+		}
+		if seen[s] {
+			t.Fatalf("duplicate secret %q", s)
+		}
+		seen[s] = true
 	}
 }

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Usage: scripts/smoke.sh   (after: source scripts/token.sh)
-# Phase 1: /health is 200 and the 32 protected routes return 401 with no token.
-# Phase 2: with $TOKEN, exercises all 33 routes using a temporary 12 s click
+# Phase 1: /health is 200, /play/<bogus> is 404 and the 31 protected routes
+# return 401 with no token.
+# Phase 2: with $TOKEN, exercises all 34 routes using a temporary 12 s click
 # track (uploaded two ways) and a temporary playlist. Library tracks and
 # playlists are never touched; the temporary ones are deleted even on failure.
 # Exits non-zero on the first failure, naming the route.
@@ -25,7 +26,7 @@ ROUTES=(
   "PATCH /playlists/{id}" "DELETE /playlists/{id}" "GET /playlists/{id}/tracks"
   "POST /playlists/{id}/tracks" "DELETE /playlists/{id}/tracks/{trackId}"
   "PUT /playlists/{id}/tracks/order" "POST /playlists/{id}/player"
-  "POST /upload" "GET /request" "GET /list"
+  "GET /play/{pid}" "POST /upload" "GET /request" "GET /list"
 )
 
 if [ "${1:-}" = "--list-routes" ]; then
@@ -120,10 +121,12 @@ wait_ready() { # wait_ready <track id>; up to 90 s
 # ---------- Phase 1: no token ----------
 echo "== no token =="
 unauth GET /health 200
+unauth GET /play/smoke-none 404
 for r in "${ROUTES[@]}"; do
   method=${r%% *}
   tmpl=${r#* }
   [ "$tmpl" = "/health" ] && continue
+  [ "$tmpl" = "/play/{pid}" ] && continue
   path=$tmpl
   while [[ "$path" =~ \{[A-Za-z]+\} ]]; do path=${path/${BASH_REMATCH[0]}/smoke-none}; done
   unauth "$method" "$path" 401
@@ -208,9 +211,13 @@ step POST "/playlists/$PLAYLIST/tracks" 2xx --json "{\"track_ids\":[\"$TRACK_B\"
 step GET "/playlists/$PLAYLIST/tracks" 2xx
 step PUT "/playlists/$PLAYLIST/tracks/order" 2xx --json "{\"track_ids\":[\"$TRACK_B\",\"$TRACK_A\"]}"
 step POST "/playlists/$PLAYLIST/player" 201
-printf 'url = "%s"\n' "$(jget .url)" >"$WORK/get.cfg"
-code=$(curl -sS -o /dev/null -w '%{http_code}' -K "$WORK/get.cfg") || fail GET "(player url)" 200 "curl-error"
-check GET "(player url)" 200 "$code"
+PLAYER_URL=$(jget .url)
+case "$PLAYER_URL" in "$API"/play/*|https://*/play/*) ;; *) echo "smoke: unexpected player url shape" >&2; exit 1 ;; esac
+printf 'url = "%s"\n' "$PLAYER_URL" >"$WORK/get.cfg"
+code=$(curl -sS -o /dev/null -D "$WORK/player.headers" -w '%{http_code}' -K "$WORK/get.cfg") || fail GET "/play/{pid}" 200 "curl-error"
+check GET "/play/{pid}" 200 "$code"
+# route: GET /play/{pid}
+grep -qi '^content-type: text/html' "$WORK/player.headers" || fail GET "/play/{pid} content-type" text/html "other"
 step DELETE "/playlists/$PLAYLIST/tracks/$TRACK_B" 204
 
 step GET "/request?id=$TRACK_A" 2xx

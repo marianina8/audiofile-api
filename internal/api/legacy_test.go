@@ -153,7 +153,7 @@ func TestLegacyList_StoreFailure(t *testing.T) {
 }
 
 func TestRouteCount(t *testing.T) {
-	if n := len(Routes()); n != 33 {
-		t.Errorf("len(Routes()) = %d, want 33", n)
+	if n := len(Routes()); n != 34 {
+		t.Errorf("len(Routes()) = %d, want 34", n)
 	}
 }

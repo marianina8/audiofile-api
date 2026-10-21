@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Offline check (no network, no AWS): the routes in internal/api/routes.go, the
-# ROUTES list in scripts/smoke.sh (the 401 phase) and the authenticated `step`
+# ROUTES list in scripts/smoke.sh (the no-token phase) and the authenticated `step`
 # calls in scripts/smoke.sh must all describe the same set of routes.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -14,6 +14,9 @@ sed -nE 's/.*Method: "([A-Z]+)", Path: "([^"]+)".*/\1 \2/p' "$root/internal/api/
 # step <METHOD> <path> ...: strip quotes and query, turn $VAR / ${VAR} into {}.
 sed -nE 's/^step ([A-Z]+) "?([^" ]+)"?( .*)?$/\1 \2/p' "$root/scripts/smoke.sh" |
   sed -E 's/\?[^ ]*//; s/\$\{?[A-Za-z_]+\}?/{}/g' | norm >"$tmp/steps"
+# Calls that are not `step` (the public player page) carry a "# route:" marker.
+sed -nE 's/^# route: ([A-Z]+ .*)$/\1/p' "$root/scripts/smoke.sh" | norm >>"$tmp/steps"
+sort -u -o "$tmp/steps" "$tmp/steps"
 
 rc=0
 for set in list steps; do

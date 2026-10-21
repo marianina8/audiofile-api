@@ -14,6 +14,13 @@ type Deps struct {
 	Blob  blob.Blob
 	Now   func() time.Time
 	NewID func() string
+	// NewSecret returns an unguessable 22-character base64url token (used for
+	// player links). Defaults to 16 crypto/rand bytes.
+	NewSecret func() string
+	// PublicBaseURL, when non-empty, is the origin used in player links
+	// (e.g. https://abc.execute-api.us-west-2.amazonaws.com); otherwise the
+	// request's Host header is used.
+	PublicBaseURL string
 }
 
 type server struct {
@@ -22,6 +29,9 @@ type server struct {
 
 // New returns the HTTP handler serving every route in Routes().
 func New(d Deps) http.Handler {
+	if d.NewSecret == nil {
+		d.NewSecret = newSecret
+	}
 	s := &server{Deps: d}
 	handlers := map[string]http.HandlerFunc{
 		"GET /health":                             s.health,
@@ -54,6 +64,7 @@ func New(d Deps) http.Handler {
 		"DELETE /playlists/{id}/tracks/{trackId}": s.removePlaylistTrack,
 		"PUT /playlists/{id}/tracks/order":        s.reorderPlaylistTracks,
 		"POST /playlists/{id}/player":             s.createPlaylistPlayer,
+		"GET /play/{pid}":                         s.getPlayerPage,
 		"POST /upload":                            s.uploadAudio,
 		"GET /request":                            s.getAudio,
 		"GET /list":                               s.listAudio,

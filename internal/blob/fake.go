@@ -3,6 +3,7 @@ package blob
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"sync"
 	"time"
@@ -14,13 +15,14 @@ type Fake struct {
 	mu           sync.Mutex
 	Objects      map[string][]byte
 	ContentTypes map[string]string
+	Metadata     map[string]map[string]string
 }
 
 var _ Blob = (*Fake)(nil)
 
 // NewFake returns an empty Fake.
 func NewFake() *Fake {
-	return &Fake{Objects: map[string][]byte{}, ContentTypes: map[string]string{}}
+	return &Fake{Objects: map[string][]byte{}, ContentTypes: map[string]string{}, Metadata: map[string]map[string]string{}}
 }
 
 func fakeURL(key string, ttl time.Duration) string {
@@ -38,12 +40,27 @@ func (f *Fake) PresignGet(_ context.Context, key string, ttl time.Duration) (str
 	return fakeURL(key, ttl), nil
 }
 
-func (f *Fake) Put(_ context.Context, key, contentType string, body []byte) error {
+func (f *Fake) Put(ctx context.Context, key, contentType string, body []byte) error {
+	return f.PutWithMetadata(ctx, key, contentType, body, nil)
+}
+
+func (f *Fake) PutWithMetadata(_ context.Context, key, contentType string, body []byte, metadata map[string]string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Objects[key] = append([]byte(nil), body...)
 	f.ContentTypes[key] = contentType
+	f.Metadata[key] = maps.Clone(metadata)
 	return nil
+}
+
+func (f *Fake) Get(_ context.Context, key string) ([]byte, map[string]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	data, ok := f.Objects[key]
+	if !ok {
+		return nil, nil, fmt.Errorf("get %q: %w", key, ErrNotFound)
+	}
+	return append([]byte(nil), data...), maps.Clone(f.Metadata[key]), nil
 }
 
 func (f *Fake) Delete(_ context.Context, key string) error {
@@ -51,6 +68,7 @@ func (f *Fake) Delete(_ context.Context, key string) error {
 	defer f.mu.Unlock()
 	delete(f.Objects, key)
 	delete(f.ContentTypes, key)
+	delete(f.Metadata, key)
 	return nil
 }
 

@@ -290,6 +290,14 @@ Resources:
             Method: GET
             Auth:
               Authorizer: NONE
+        GetPlayerPage:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /play/{pid}
+            Method: GET
+            Auth:
+              Authorizer: NONE
         CreateTrackUpload:
           Type: HttpApi
           Properties:

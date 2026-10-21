@@ -803,7 +803,7 @@ paths:
         - $ref: "#/components/parameters/playlistId"
       responses:
         "201":
-          description: A temporary link to a page that plays the playlist.
+          description: A temporary link to a page that plays the playlist, served by the API.
           content:
             application/json:
               schema:
@@ -819,6 +819,28 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /play/{pid}:
+    get:
+      operationId: getPlayerPage
+      summary: Get a player page
+      security: []
+      x-mcp: false
+      parameters:
+        - name: pid
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9_-]{22}$"
+      responses:
+        "200":
+          description: The player page.
+          content:
+            text/html:
+              schema:
+                type: string
         "404":
           $ref: "#/components/responses/NotFound"
   /upload:

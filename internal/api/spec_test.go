@@ -100,6 +100,12 @@ func scalar(n *yaml.Node) string {
 
 var httpMethods = map[string]bool{"get": true, "put": true, "post": true, "delete": true, "patch": true, "head": true, "options": true}
 
+// publicRoutes are the only routes that may be unauthenticated.
+var publicRoutes = map[opKey]bool{
+	{"GET", "/health"}:     true,
+	{"GET", "/play/{pid}"}: true,
+}
+
 func TestSpecCoverage(t *testing.T) {
 	routes := map[opKey]bool{}
 	scopeOf := map[opKey]string{}
@@ -107,7 +113,7 @@ func TestSpecCoverage(t *testing.T) {
 		k := opKey{r.Method, r.Path}
 		routes[k] = true
 		scopeOf[k] = r.Scope
-		if r.Path == "/health" {
+		if publicRoutes[k] {
 			if r.Scope != "" {
 				t.Errorf("%s: public route must have no scope", k)
 			}
@@ -145,7 +151,7 @@ func TestSpecCoverage(t *testing.T) {
 			if scalar(child(op, "summary")) == "" {
 				t.Errorf("%s: missing summary", k)
 			}
-			if path == "/health" {
+			if publicRoutes[k] {
 				sec := child(op, "security")
 				if sec == nil || sec.Kind != yaml.SequenceNode || len(sec.Content) != 0 {
 					t.Errorf("%s: security must be an explicit empty list", k)
@@ -166,6 +172,7 @@ func TestSpecCoverage(t *testing.T) {
 		t.Fatal("template.yaml: ApiFunction has no Events")
 	}
 	tplOps := map[opKey]bool{}
+	publicEvents := map[opKey]bool{}
 	for i := 0; i+1 < len(evs.Content); i += 2 {
 		name, ev := evs.Content[i].Value, evs.Content[i+1]
 		if scalar(child(ev, "Type")) != "HttpApi" {
@@ -179,9 +186,10 @@ func TestSpecCoverage(t *testing.T) {
 		tplOps[k] = true
 		auth := child(props, "Auth")
 		if scalar(child(auth, "Authorizer")) == "NONE" {
-			if k != (opKey{"GET", "/health"}) {
-				t.Errorf("event %s (%s): Authorizer NONE is allowed only for GET /health", name, k)
+			if !publicRoutes[k] {
+				t.Errorf("event %s (%s): Authorizer NONE is allowed only for GET /health and GET /play/{pid}", name, k)
 			}
+			publicEvents[k] = true
 			continue
 		}
 		if scalar(child(auth, "Authorizer")) != "CognitoJwt" {
@@ -199,6 +207,9 @@ func TestSpecCoverage(t *testing.T) {
 		}
 	}
 
+	if !reflect.DeepEqual(publicEvents, publicRoutes) {
+		t.Errorf("template events with Authorizer NONE = %v, want exactly %v", publicEvents, publicRoutes)
+	}
 	for _, m := range diffSources(map[string]map[opKey]bool{
 		"Routes()":      routes,
 		"openapi.yaml":  specOps,
@@ -272,7 +283,7 @@ func TestSpecResponses(t *testing.T) {
 			if child(resp, want) == nil {
 				t.Errorf("%s: missing success response %s", k, want)
 			}
-			if path != "/health" && child(resp, "401") == nil {
+			if !publicRoutes[k] && child(resp, "401") == nil {
 				t.Errorf("%s: missing 401 response", k)
 			}
 

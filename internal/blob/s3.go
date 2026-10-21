@@ -57,16 +57,41 @@ func (s *S3) PresignGet(ctx context.Context, key string, ttl time.Duration) (str
 }
 
 func (s *S3) Put(ctx context.Context, key, contentType string, body []byte) error {
+	return s.PutWithMetadata(ctx, key, contentType, body, nil)
+}
+
+func (s *S3) PutWithMetadata(ctx context.Context, key, contentType string, body []byte, metadata map[string]string) error {
 	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(s.bucket),
 		Key:         aws.String(key),
 		ContentType: aws.String(contentType),
 		Body:        bytes.NewReader(body),
+		Metadata:    metadata,
 	})
 	if err != nil {
 		return fmt.Errorf("put %q: %w", key, err)
 	}
 	return nil
+}
+
+func (s *S3) Get(ctx context.Context, key string) ([]byte, map[string]string, error) {
+	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		var nsk *types.NoSuchKey
+		if errors.As(err, &nsk) {
+			return nil, nil, fmt.Errorf("get %q: %w", key, ErrNotFound)
+		}
+		return nil, nil, fmt.Errorf("get %q: %w", key, err)
+	}
+	defer out.Body.Close()
+	body, err := io.ReadAll(out.Body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get %q: %w", key, err)
+	}
+	return body, out.Metadata, nil
 }
 
 func (s *S3) Delete(ctx context.Context, key string) error {
