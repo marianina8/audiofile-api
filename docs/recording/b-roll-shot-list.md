@@ -19,20 +19,6 @@ Each clip becomes its own insert in the edit (`I##_what-it-shows.mp4`). Do every
 
 ---
 
-## I01: Inspector + the test server (about 2 min)
-
-Shows what an MCP server is made of: a menu of tools with descriptions and hints.
-
-1. Terminal: `npx @modelcontextprotocol/inspector@2.10.1`. Let the browser open at localhost:6274.
-2. Left panel: **Transport Type** = `Streamable HTTP`, then paste the `things-test` URL (the `McpUrl` from LEARN-MCP.md). Pause on it.
-3. Click **Connect**. ⏸ **Pause the recording** for the sign-in, then resume once it says *Connected*.
-4. **Tools** tab, then **List Tools**. Hold 3 s on the two tools.
-5. Click `list_things`. Hover over the **read-only** tag; hold.
-6. Click `delete_thing`. Hover over the **destructive** tag and the `name` input; hold.
-7. `list_things`, then **Run Tool**. Hold on the result.
-8. `delete_thing` with `name` = `banana`, then **Run Tool**. Hold.
-9. Optional: the *schema portability* warning on `list_things`. Hover it and hold, which sets up the "make list fields non-nullable" point for Server B.
-
 ## I02: Repo tour (about 1 min)
 
 Shows what the API is. Use your editor (VS Code), full window, a large font.
@@ -66,6 +52,22 @@ Proof the endpoints work before any AI is involved, and the chain the model has 
 2. Let it run. It prints nothing until the end; trim the wait in the edit.
 3. Hold on: **`deployed audiofile-generated: https://…/mcp`**. The URL is fine to show.
 
+## I05b: Server A in the Inspector, "what the AI sees" (about 2 min)
+
+Shows what an MCP server is made of, and what the generator gave us: 33 tools, one per endpoint, with no hints.
+
+1. Terminal: `npx @modelcontextprotocol/inspector@2.10.1`. Let the browser open at localhost:6274.
+2. Left panel: **Transport Type** = `Streamable HTTP`, then paste the Server A URL from I05. Pause on it.
+3. Click **Connect**. ⏸ **Pause the recording** for the sign-in, then resume once it says *Connected*.
+4. **Tools** tab, then **List Tools**. Scroll the whole list slowly, top to bottom: this is the "33 tools" visual.
+5. Click `listTracks`, `listAudio`, `searchTracks` and `createPlaylist`. Read each description. Hold on any that are vague or overlap: `listTracks` vs `listAudio` (the book route) is a good one: two tools that both list tracks.
+6. Click `deletePlaylist`. Hold on the **missing** destructive tag (compare it with `listTracks`: neither is tagged).
+7. Run `listTracks` (read-only, safe). Hold on the raw JSON result.
+8. Don't run any delete or upload tool here.
+9. If the Inspector shows a warning (for example *schema portability*), hover it and hold.
+
+The same clip with Server B comes later: a handful of tools, clear descriptions, read-only and destructive tags. Put the two side by side in the edit.
+
 ## I06: Server A in ChatGPT, the stumble (about 2–3 min)
 
 The heart of the video: the generated server's 33 tools against a simple request.
@@ -92,7 +94,7 @@ Before: remove the old connector. In the connector's tool settings, set every `d
 
 ## Later (after the Server B guide)
 
-- I08: building Server B (code, `go run`, the tool list in the Inspector: few tools, clear descriptions)
+- I08: building Server B (code, `go run`), then the Inspector clip from I05b repeated against Server B
 - I09–I10: the same prompt in ChatGPT and Claude, with Server B getting it right
 - Side-by-side tool lists: 33 tools against a handful
 
