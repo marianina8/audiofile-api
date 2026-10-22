@@ -13,6 +13,8 @@ func TestAllowedRedirect(t *testing.T) {
 		{"https://chatgpt.com/connector/oauth/" + cbID, cbID},
 		{"http://localhost:6274/oauth/callback", ""},
 		{"http://localhost:6274/oauth/callback/debug", ""},
+		{"http://127.0.0.1:6274/oauth/callback", ""},
+		{"http://127.0.0.1:6274/oauth/callback/debug", ""},
 	}
 	for _, c := range accept {
 		if !AllowedRedirect(c.uri, c.id) {
@@ -58,9 +60,11 @@ func TestAllowedRedirect(t *testing.T) {
 		{"http://localhost:53122/callback#x", ""},
 		{"http://u:p@localhost:53122/callback", ""},
 		{"http://localhost:53122//callback", ""},
-		// Inspector entries are fixed to port 6274 on localhost.
+		// Inspector entries are fixed to port 6274 on localhost/127.0.0.1.
 		{"http://localhost:6275/oauth/callback", ""},
-		{"http://127.0.0.1:6274/oauth/callback", ""},
+		{"http://127.0.0.1:6275/oauth/callback", ""},
+		{"http://127.0.0.1:6274/oauth/callbackx", ""},
+		{"http://127.0.0.1:6274/oauth/callback?x=1", ""},
 		{"http://localhost:53122/oauth/callback/debug", ""},
 		{"", ""},
 		{"not a url", ""},

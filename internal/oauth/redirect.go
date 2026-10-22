@@ -13,6 +13,8 @@ var fixedRedirects = map[string]bool{
 	"https://chatgpt.com/connector_platform_oauth_redirect": true,
 	"http://localhost:6274/oauth/callback":                  true, // MCP Inspector (lab)
 	"http://localhost:6274/oauth/callback/debug":            true, // MCP Inspector (lab)
+	"http://127.0.0.1:6274/oauth/callback":                  true, // MCP Inspector 2.x binds 127.0.0.1 (lab)
+	"http://127.0.0.1:6274/oauth/callback/debug":            true, // MCP Inspector 2.x debug flow (lab)
 }
 
 const chatgptConnectorPrefix = "https://chatgpt.com/connector/oauth/"
