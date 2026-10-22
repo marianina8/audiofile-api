@@ -4,8 +4,11 @@ What to do while the screen is recording, for the clips that can be shot now. Se
 
 Each clip becomes its own insert in the edit (`I##_what-it-shows.mp4`). Do every action slowly and pause 2–3 seconds on each result, so there's a clean frame to hold.
 
+Go top to bottom: each clip builds on the one before. Keep this file open on a second screen or your phone, outside the window you are recording.
+
 ## Before you hit record (every session)
 
+- [ ] Terminal in the repo: `cd ~/Code/github.com/marianina8/audiofile-api`
 - [ ] **Do Not Disturb** on. **Personal Hotspot** off (the Wi-Fi menu shows your phone's name).
 - [ ] Close Finder, Activity Monitor, Slack, mail, and anything else that isn't in the shot.
 - [ ] Record **the app window**, not the whole screen.
@@ -19,7 +22,7 @@ Each clip becomes its own insert in the edit (`I##_what-it-shows.mp4`). Do every
 
 ---
 
-## I02: Repo tour (about 1 min)
+## I01: Repo tour (about 1 min)
 
 Shows what the API is. Use your editor (VS Code), full window, a large font.
 
@@ -27,7 +30,7 @@ Shows what the API is. Use your editor (VS Code), full window, a large font.
 2. `openapi.yaml`: scroll through `paths:` at a steady speed. This is the "34 routes" visual.
 3. `COMPARISON.md`: the *At a glance* table (book vs now). Hold.
 
-## I03: The API alone builds a workout mix (about 40 s)
+## I02: The API alone builds a workout mix (about 40 s)
 
 Proof the endpoints work before any AI is involved, and the chain the model has to discover.
 
@@ -36,7 +39,7 @@ Proof the endpoints work before any AI is involved, and the chain the model has 
 3. The player opens in the browser. Press ▶, let a track play for 5–10 s (use system audio if you're capturing sound), then skip to the next track.
 4. Afterwards, off camera: `scripts/reset-playlists.sh`
 
-## I04: Generate Server A (about 1 min)
+## I03: Generate Server A (about 1 min)
 
 "One tool per endpoint, in one command."
 
@@ -44,7 +47,7 @@ Proof the endpoints work before any AI is involved, and the chain the model has 
 2. Hold on the last line: **`generated 33 tools into …`**. That number gets boxed in the edit.
 3. Optional: open `servers/generated/app/src/index.ts` and scroll through the tool definitions quickly, which shows the volume.
 
-## I05: Deploy Server A (about 1 min, mostly waiting)
+## I04: Deploy Server A (about 1 min, mostly waiting)
 
 > ⚠️ **This creates the real Server A stack on AWS** (a Lambda and an API Gateway, pennies a month, the same as the rehearsal). Tell Claude before your first run.
 
@@ -52,12 +55,12 @@ Proof the endpoints work before any AI is involved, and the chain the model has 
 2. Let it run. It prints nothing until the end; trim the wait in the edit.
 3. Hold on: **`deployed audiofile-generated: https://…/mcp`**. The URL is fine to show.
 
-## I05b: Server A in the Inspector, "what the AI sees" (about 2 min)
+## I05: Server A in the Inspector, "what the AI sees" (about 2 min)
 
 Shows what an MCP server is made of, and what the generator gave us: 33 tools, one per endpoint, with no hints.
 
 1. Terminal: `npx @modelcontextprotocol/inspector@2.10.1`. Let the browser open at localhost:6274.
-2. Left panel: **Transport Type** = `Streamable HTTP`, then paste the Server A URL from I05. Pause on it.
+2. Left panel: **Transport Type** = `Streamable HTTP`, then paste the Server A URL from I04. Pause on it.
 3. Click **Connect**. ⏸ **Pause the recording** for the sign-in, then resume once it says *Connected*.
 4. **Tools** tab, then **List Tools**. Scroll the whole list slowly, top to bottom: this is the "33 tools" visual.
 5. Click `listTracks`, `listAudio`, `searchTracks` and `createPlaylist`. Read each description. Hold on any that are vague or overlap: `listTracks` vs `listAudio` (the book route) is a good one: two tools that both list tracks.
@@ -94,7 +97,7 @@ Before: remove the old connector. In the connector's tool settings, set every `d
 
 ## Later (after the Server B guide)
 
-- I08: building Server B (code, `go run`), then the Inspector clip from I05b repeated against Server B
+- I08: building Server B (code, `go run`), then the Inspector clip from I05 repeated against Server B
 - I09–I10: the same prompt in ChatGPT and Claude, with Server B getting it right
 - Side-by-side tool lists: 33 tools against a handful
 
