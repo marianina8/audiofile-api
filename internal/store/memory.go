@@ -209,6 +209,21 @@ func (m *Memory) PutPlaylist(_ context.Context, p model.Playlist) error {
 	return nil
 }
 
+func (m *Memory) UpdatePlaylist(_ context.Context, p model.Playlist, expectedVersion int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cur, ok := m.playlists[p.ID]
+	if !ok {
+		return fmt.Errorf("playlist %q: %w", p.ID, ErrNotFound)
+	}
+	if cur.Version != expectedVersion {
+		return fmt.Errorf("playlist %q at version %d, not %d: %w", p.ID, cur.Version, expectedVersion, ErrConflict)
+	}
+	p.Version = expectedVersion + 1
+	m.playlists[p.ID] = clonePlaylist(p)
+	return nil
+}
+
 func (m *Memory) GetPlaylist(_ context.Context, id string) (model.Playlist, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

@@ -245,10 +245,18 @@ func (s *server) deleteTrack(w http.ResponseWriter, r *http.Request) {
 		if !slices.Contains(p.TrackIDs, id) {
 			continue
 		}
-		p.TrackIDs = slices.DeleteFunc(slices.Clone(p.TrackIDs), func(x string) bool { return x == id })
-		p.UpdatedAt = ts
-		if err := s.Store.PutPlaylist(ctx, p); err != nil {
-			internalError(w)
+		_, err := s.editPlaylist(ctx, p.ID, p, func(p *model.Playlist) error {
+			if !slices.Contains(p.TrackIDs, id) {
+				return errUnchanged
+			}
+			p.TrackIDs = slices.DeleteFunc(slices.Clone(p.TrackIDs), func(x string) bool { return x == id })
+			p.UpdatedAt = ts
+			return nil
+		})
+		switch {
+		case errors.Is(err, store.ErrNotFound): // deleted meanwhile; nothing to clean up
+		case err != nil:
+			editError(w, err)
 			return
 		}
 	}

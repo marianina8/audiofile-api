@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -320,6 +321,40 @@ func (d *Dynamo) AlbumsByArtist(ctx context.Context, artistID string) ([]model.A
 
 func (d *Dynamo) PutPlaylist(ctx context.Context, p model.Playlist) error {
 	return d.put(ctx, d.t.Playlists, p)
+}
+
+// UpdatePlaylist is a conditional PutItem on the version attribute. Rows
+// written before versioning lack it, so version 0 also matches its absence.
+func (d *Dynamo) UpdatePlaylist(ctx context.Context, p model.Playlist, expectedVersion int) error {
+	if p.ID == "" {
+		return fmt.Errorf("playlist %q: %w", p.ID, ErrNotFound)
+	}
+	p.Version = expectedVersion + 1
+	item, err := marshal(p)
+	if err != nil {
+		return err
+	}
+	cond := "attribute_exists(id) AND version = :prev"
+	if expectedVersion == 0 {
+		cond = "attribute_exists(id) AND (attribute_not_exists(version) OR version = :prev)"
+	}
+	_, err = d.db.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName:           aws.String(d.t.Playlists),
+		Item:                item,
+		ConditionExpression: aws.String(cond),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":prev": &types.AttributeValueMemberN{Value: strconv.Itoa(expectedVersion)},
+		},
+		ReturnValuesOnConditionCheckFailure: types.ReturnValuesOnConditionCheckFailureAllOld,
+	})
+	var cf *types.ConditionalCheckFailedException
+	switch {
+	case errors.As(err, &cf) && len(cf.Item) == 0:
+		return fmt.Errorf("playlist %q: %w", p.ID, ErrNotFound)
+	case errors.As(err, &cf):
+		return fmt.Errorf("playlist %q not at version %d: %w", p.ID, expectedVersion, ErrConflict)
+	}
+	return err
 }
 
 func (d *Dynamo) GetPlaylist(ctx context.Context, id string) (model.Playlist, error) {

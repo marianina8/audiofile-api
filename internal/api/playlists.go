@@ -110,7 +110,7 @@ func (s *server) createPlaylist(w http.ResponseWriter, r *http.Request) {
 	ts := s.now()
 	p := model.Playlist{
 		ID: s.NewID(), Name: name, Description: req.Description,
-		TrackIDs: ids, CreatedAt: ts, UpdatedAt: ts,
+		TrackIDs: ids, CreatedAt: ts, UpdatedAt: ts, Version: 1,
 	}
 	if err := s.Store.PutPlaylist(r.Context(), p); err != nil {
 		internalError(w)
@@ -173,20 +173,18 @@ func (s *server) updatePlaylist(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	p, err := s.Store.GetPlaylist(r.Context(), r.PathValue("id"))
+	p, err := s.editPlaylist(r.Context(), r.PathValue("id"), model.Playlist{}, func(p *model.Playlist) error {
+		if req.Name != nil {
+			p.Name = name
+		}
+		if req.Description != nil {
+			p.Description = *req.Description
+		}
+		p.UpdatedAt = s.now()
+		return nil
+	})
 	if err != nil {
-		storeError(w, err, "playlist")
-		return
-	}
-	if req.Name != nil {
-		p.Name = name
-	}
-	if req.Description != nil {
-		p.Description = *req.Description
-	}
-	p.UpdatedAt = s.now()
-	if err := s.Store.PutPlaylist(r.Context(), p); err != nil {
-		internalError(w)
+		editError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, playlistDetail(p))
@@ -246,37 +244,38 @@ func (s *server) addPlaylistTracks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	fresh := slices.DeleteFunc(ids, func(id string) bool { return slices.Contains(p.TrackIDs, id) })
-	pos := len(p.TrackIDs)
-	if req.Position != nil && *req.Position < pos {
-		pos = *req.Position
-	}
-	if len(fresh) > 0 {
+	p, err = s.editPlaylist(r.Context(), p.ID, p, func(p *model.Playlist) error {
+		fresh := slices.DeleteFunc(slices.Clone(ids), func(id string) bool { return slices.Contains(p.TrackIDs, id) })
+		if len(fresh) == 0 {
+			return errUnchanged
+		}
+		pos := len(p.TrackIDs)
+		if req.Position != nil && *req.Position < pos {
+			pos = *req.Position
+		}
 		p.TrackIDs = slices.Insert(slices.Clone(p.TrackIDs), pos, fresh...)
 		p.UpdatedAt = s.now()
-		if err := s.Store.PutPlaylist(r.Context(), p); err != nil {
-			internalError(w)
-			return
-		}
+		return nil
+	})
+	if err != nil {
+		editError(w, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, playlistDetail(p))
 }
 
 func (s *server) removePlaylistTrack(w http.ResponseWriter, r *http.Request) {
-	p, err := s.Store.GetPlaylist(r.Context(), r.PathValue("id"))
-	if err != nil {
-		storeError(w, err, "playlist")
-		return
-	}
 	trackID := r.PathValue("trackId")
-	if !slices.Contains(p.TrackIDs, trackID) {
-		writeError(w, http.StatusNotFound, "not_found", "track not in playlist")
-		return
-	}
-	p.TrackIDs = slices.DeleteFunc(slices.Clone(p.TrackIDs), func(x string) bool { return x == trackID })
-	p.UpdatedAt = s.now()
-	if err := s.Store.PutPlaylist(r.Context(), p); err != nil {
-		internalError(w)
+	_, err := s.editPlaylist(r.Context(), r.PathValue("id"), model.Playlist{}, func(p *model.Playlist) error {
+		if !slices.Contains(p.TrackIDs, trackID) {
+			return &apiError{http.StatusNotFound, "not_found", "track not in playlist"}
+		}
+		p.TrackIDs = slices.DeleteFunc(slices.Clone(p.TrackIDs), func(x string) bool { return x == trackID })
+		p.UpdatedAt = s.now()
+		return nil
+	})
+	if err != nil {
+		editError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -293,23 +292,20 @@ func (s *server) reorderPlaylistTracks(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, "track_ids is required")
 		return
 	}
-	p, err := s.Store.GetPlaylist(r.Context(), r.PathValue("id"))
-	if err != nil {
-		storeError(w, err, "playlist")
-		return
-	}
-	want := slices.Clone(p.TrackIDs)
 	got := slices.Clone(req.TrackIDs)
-	slices.Sort(want)
 	slices.Sort(got)
-	if !slices.Equal(want, got) {
-		badRequest(w, "track_ids must contain each current playlist track exactly once")
-		return
-	}
-	p.TrackIDs = slices.Clone(req.TrackIDs)
-	p.UpdatedAt = s.now()
-	if err := s.Store.PutPlaylist(r.Context(), p); err != nil {
-		internalError(w)
+	p, err := s.editPlaylist(r.Context(), r.PathValue("id"), model.Playlist{}, func(p *model.Playlist) error {
+		want := slices.Clone(p.TrackIDs)
+		slices.Sort(want)
+		if !slices.Equal(want, got) {
+			return &apiError{http.StatusBadRequest, "bad_request", "track_ids must contain each current playlist track exactly once"}
+		}
+		p.TrackIDs = slices.Clone(req.TrackIDs)
+		p.UpdatedAt = s.now()
+		return nil
+	})
+	if err != nil {
+		editError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, playlistDetail(p))

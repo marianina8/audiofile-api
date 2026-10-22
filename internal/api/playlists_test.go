@@ -2,11 +2,18 @@ package api
 
 import (
 	"context"
+	"fmt"
+	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/marianina8/audiofile-api/internal/blob"
 	"github.com/marianina8/audiofile-api/internal/model"
+	"github.com/marianina8/audiofile-api/internal/store"
 )
 
 func seedReady(t *testing.T, e *env, ids ...string) {
@@ -275,4 +282,112 @@ func TestPatchDeletePlaylist(t *testing.T) {
 	wantStatus(t, e.do("DELETE", path, ""), 204)
 	wantErrCode(t, e.do("GET", path, ""), 404, "not_found")
 	wantErrCode(t, e.do("DELETE", path, ""), 404, "not_found")
+}
+
+// slowReads widens the read-modify-write window so concurrent edits overlap.
+type slowReads struct{ *store.Memory }
+
+func (s slowReads) GetPlaylist(ctx context.Context, id string) (model.Playlist, error) {
+	p, err := s.Memory.GetPlaylist(ctx, id)
+	time.Sleep(2 * time.Millisecond)
+	return p, err
+}
+
+func TestAddPlaylistTracks_ConcurrentWritersKeepEveryTrack(t *testing.T) {
+	mem := store.NewMemory()
+	h := New(Deps{Store: slowReads{mem}, Blob: blob.NewFake(), Now: func() time.Time { return fixedNow }, NewID: func() string { return "p" }})
+	const n = 5 // each writer can lose at most once per other writer, so 5 attempts suffice
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("t%d", i)
+		if err := mem.PutTrack(context.Background(), model.Track{ID: ids[i], Status: model.StatusReady}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := mem.PutPlaylist(context.Background(), model.Playlist{ID: "p", Name: "P", Version: 1}); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	codes := make([]int, n)
+	for i, id := range ids {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, httptest.NewRequest("POST", "/playlists/p/tracks", strings.NewReader(`{"track_ids":["`+id+`"]}`)))
+			codes[i] = rec.Code
+		}()
+	}
+	wg.Wait()
+	for i, c := range codes {
+		if c != 200 {
+			t.Errorf("writer %d status = %d", i, c)
+		}
+	}
+	p, err := mem.GetPlaylist(context.Background(), "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := slices.Clone(p.TrackIDs)
+	slices.Sort(got)
+	if !slices.Equal(got, ids) {
+		t.Errorf("track_ids = %v, want all of %v", p.TrackIDs, ids)
+	}
+}
+
+// alwaysConflicts loses every conditional playlist write.
+type alwaysConflicts struct {
+	*store.Memory
+	attempts *int
+}
+
+func (s alwaysConflicts) UpdatePlaylist(context.Context, model.Playlist, int) error {
+	*s.attempts++
+	return store.ErrConflict
+}
+
+func TestPlaylistEdits_PersistentConflictIs409(t *testing.T) {
+	cases := []struct{ method, path, body string }{
+		{"PATCH", "/playlists/p", `{"name":"New"}`},
+		{"POST", "/playlists/p/tracks", `{"track_ids":["b"]}`},
+		{"DELETE", "/playlists/p/tracks/a", ""},
+		{"PUT", "/playlists/p/tracks/order", `{"track_ids":["a"]}`},
+		{"DELETE", "/tracks/a", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.method+" "+c.path, func(t *testing.T) {
+			mem := store.NewMemory()
+			attempts := 0
+			e := &env{st: mem, bl: blob.NewFake()}
+			e.h = New(Deps{Store: alwaysConflicts{mem, &attempts}, Blob: e.bl, Now: func() time.Time { return fixedNow }, NewID: func() string { return "x" }})
+			seedReady(t, e, "a", "b")
+			_ = mem.PutPlaylist(context.Background(), model.Playlist{ID: "p", Name: "P", TrackIDs: []string{"a"}})
+			wantErrCode(t, e.do(c.method, c.path, c.body), 409, "conflict")
+			if attempts != 5 {
+				t.Errorf("attempts = %d, want 5", attempts)
+			}
+			if _, err := mem.GetTrack(context.Background(), "a"); err != nil {
+				t.Errorf("track a was deleted despite the conflict: %v", err)
+			}
+		})
+	}
+}
+
+func TestPlaylistEdits_BumpVersion(t *testing.T) {
+	e := newEnv()
+	seedReady(t, e, "a", "b")
+	id := newPlaylist(t, e, "a")
+	p, _ := e.st.GetPlaylist(context.Background(), id)
+	if p.Version != 1 {
+		t.Fatalf("new playlist version = %d, want 1", p.Version)
+	}
+	wantStatus(t, e.do("POST", "/playlists/"+id+"/tracks", `{"track_ids":["b"]}`), 200)
+	wantStatus(t, e.do("PUT", "/playlists/"+id+"/tracks/order", `{"track_ids":["b","a"]}`), 200)
+	wantStatus(t, e.do("PATCH", "/playlists/"+id, `{"name":"N"}`), 200)
+	wantStatus(t, e.do("DELETE", "/playlists/"+id+"/tracks/a", ""), 204)
+	wantStatus(t, e.do("DELETE", "/tracks/b", ""), 204)
+	p, _ = e.st.GetPlaylist(context.Background(), id)
+	if p.Version != 6 || len(p.TrackIDs) != 0 || p.Name != "N" {
+		t.Errorf("after five edits = %+v, want version 6, no tracks, name N", p)
+	}
 }

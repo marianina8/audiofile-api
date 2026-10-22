@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 	"testing"
 
 	"github.com/marianina8/audiofile-api/internal/model"
@@ -230,6 +231,82 @@ func RunContract(t *testing.T, newStore func(t *testing.T) Store) {
 		}
 		if _, err := s.GetPlaylist(ctx, "p"); !errors.Is(err, ErrNotFound) {
 			t.Errorf("after delete err = %v", err)
+		}
+	})
+
+	t.Run("playlist update is conditional on version", func(t *testing.T) {
+		s := newStore(t)
+		if err := s.PutPlaylist(ctx, model.Playlist{ID: "p", Name: "P", Version: 1}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.UpdatePlaylist(ctx, model.Playlist{ID: "p", Name: "Q"}, 1); err != nil {
+			t.Fatalf("update at version 1: %v", err)
+		}
+		got, err := s.GetPlaylist(ctx, "p")
+		if err != nil || got.Name != "Q" || got.Version != 2 {
+			t.Fatalf("after update = %+v, %v; want name Q version 2", got, err)
+		}
+		if err := s.UpdatePlaylist(ctx, model.Playlist{ID: "p", Name: "stale"}, 1); !errors.Is(err, ErrConflict) {
+			t.Errorf("stale update err = %v, want ErrConflict", err)
+		}
+		if got, _ := s.GetPlaylist(ctx, "p"); got.Name != "Q" {
+			t.Errorf("stale update was written: %+v", got)
+		}
+		if err := s.UpdatePlaylist(ctx, model.Playlist{ID: "missing"}, 0); !errors.Is(err, ErrNotFound) {
+			t.Errorf("update of missing playlist err = %v, want ErrNotFound", err)
+		}
+		if _, err := s.GetPlaylist(ctx, "missing"); !errors.Is(err, ErrNotFound) {
+			t.Errorf("update created a missing playlist: %v", err)
+		}
+	})
+
+	t.Run("playlist without version updates at version 0", func(t *testing.T) {
+		s := newStore(t)
+		// Version 0 is not written, like playlists stored before versioning.
+		if err := s.PutPlaylist(ctx, model.Playlist{ID: "p", Name: "P"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.UpdatePlaylist(ctx, model.Playlist{ID: "p", Name: "Q"}, 0); err != nil {
+			t.Fatalf("update at version 0: %v", err)
+		}
+		if got, err := s.GetPlaylist(ctx, "p"); err != nil || got.Version != 1 {
+			t.Fatalf("after update = %+v, %v; want version 1", got, err)
+		}
+		if err := s.UpdatePlaylist(ctx, model.Playlist{ID: "p", Name: "R"}, 0); !errors.Is(err, ErrConflict) {
+			t.Errorf("second update at version 0 err = %v, want ErrConflict", err)
+		}
+	})
+
+	t.Run("concurrent writers at one version: exactly one wins", func(t *testing.T) {
+		s := newStore(t)
+		if err := s.PutPlaylist(ctx, model.Playlist{ID: "p", Name: "P", Version: 1}); err != nil {
+			t.Fatal(err)
+		}
+		const writers = 2
+		errs := make(chan error, writers)
+		var wg sync.WaitGroup
+		for i := range writers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				errs <- s.UpdatePlaylist(ctx, model.Playlist{ID: "p", Name: fmt.Sprintf("w%d", i)}, 1)
+			}()
+		}
+		wg.Wait()
+		close(errs)
+		ok, conflicts := 0, 0
+		for err := range errs {
+			switch {
+			case err == nil:
+				ok++
+			case errors.Is(err, ErrConflict):
+				conflicts++
+			default:
+				t.Errorf("unexpected err %v", err)
+			}
+		}
+		if ok != 1 || conflicts != writers-1 {
+			t.Errorf("successes = %d, conflicts = %d; want 1 and %d", ok, conflicts, writers-1)
 		}
 	})
 

@@ -193,6 +193,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /tracks/{id}/stream:
     get:
       operationId: getTrackStream
@@ -668,6 +670,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
     delete:
       operationId: deletePlaylist
       summary: Delete a playlist
@@ -742,6 +746,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /playlists/{id}/tracks/order:
     put:
       operationId: reorderPlaylistTracks
@@ -775,6 +781,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /playlists/{id}/tracks/{trackId}:
     delete:
       operationId: removePlaylistTrack
@@ -795,6 +803,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /playlists/{id}/player:
     post:
       operationId: createPlaylistPlayer
