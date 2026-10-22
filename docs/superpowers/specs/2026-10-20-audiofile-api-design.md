@@ -177,7 +177,7 @@ All JSON, snake_case. Errors: `{"error": {"code": "not_found", "message": "..."}
 | `GET /tracks/{id}` | Track |
 | `PATCH /tracks/{id}` | any of `title, artist, album, genre, year, lyrics, bpm`; `bpm` sets `bpm_source=manual`; artist/album changes relink (creating as needed) |
 | `DELETE /tracks/{id}` | `204`; removes from playlists, deletes S3 object |
-| `GET /tracks/{id}/stream` | `{url, expires_at}` presigned GET, 15 min (JSON, not a redirect; my call) |
+| `GET /tracks/{id}/stream` | `{url, expires_at}`: a short `/play/<pid>` single-track player link, valid 1 hour, served by the API (no raw presigned audio URL; ChatGPT appends `utm_source` and breaks presigned links). The public `GET /play/{pid}` route is the 34th route |
 | `GET /tracks/{id}/status` | `{id, status, error?}` |
 | `GET /search` | `q` (case-insensitive substring of title/artist/album), `artist` (id or name), `genre` (case-insensitive), `year`, `bpm_min`, `bpm_max`, `energy_min`, `energy_max`, `limit`; ready tracks only; `{items: [Track]}` |
 | `GET /artists` | `{items: [{id, name, track_count}]}` |
@@ -270,7 +270,7 @@ Go, `github.com/modelcontextprotocol/go-sdk` v1.8.0, stateless streamable HTTP, 
 
 ## 12. Library, scripts, docs
 
-Library: Marian hand-downloaded 19 Pixabay files (18 unique; Pixabay Content License, none "Content ID registered"). They live in `~/audio` (decided: a local backup outside the repo, needed to re-seed after a teardown since `sam delete` empties the bucket). License certificates, if Marian downloads them, go in `~/audio/licenses/`; otherwise the NonCommercial check relies on copyright tags. Target mix: ~5 under 100 BPM, ~5 at 100–120, ~10 at 120+, 4–5+ genres, a few sharing an artist. The book's `beatdoctor.mp3` (CC BY-NC) is skipped.
+Library: Marian hand-downloaded 19 Pixabay files (18 unique; Pixabay Content License, none "Content ID registered"). They live in `~/audio` (decided: a local backup outside the repo, needed to re-seed after a teardown since the bucket must be emptied (`aws s3 rm --recursive`) before `sam delete`, which does not empty buckets). License certificates, if Marian downloads them, go in `~/audio/licenses/`; otherwise the NonCommercial check relies on copyright tags. Target mix: ~5 under 100 BPM, ~5 at 100–120, ~10 at 120+, 4–5+ genres, a few sharing an artist. The book's `beatdoctor.mp3` (CC BY-NC) is skipped.
 
 Metadata (decided with Marian, 2026-10-20): the downloaded files carry no tags at all, and Marian won't hand-fill metadata. A draft `~/audio/library.csv` is generated automatically from filenames: artist = Pixabay uploader, title from the filename, and genre from filename keywords. Remaining genres come from a local, one-off Bedrock test: Mistral Voxtral Small in us-west-2, under $0.01. It's validated first against the 5 tracks whose genre is in the filename and used only if it gets at least 4 of 5 right; otherwise genre stays blank. Bedrock is never called by the deployed stack, and "upbeat"/"calm" is never a tag; it stays bpm + energy. `seed.sh` writes the CSV values into the uploaded copy's tags; originals are untouched.
 

@@ -1,6 +1,8 @@
 # Generator dry run: openapi-mcp-generator against openapi.yaml
 
 Run on 2026-10-21. Nothing generated is in this repo (output lives in `/tmp/server-a-dryrun`).
+> **Update (later 2026-10-21):** the crash, single-session and hardcoded-port problems below, and the missing API auth, are now fixed by `scripts/patch-generated-server.sh` (run by `scripts/generate-server.sh --patch`; see `servers/generated/README.md`). The report below records the original findings. `getTrackStream` now returns a short `/play/<pid>` link, and the public `/play/{pid}` route is not in `openapi.yaml`, so the generated tool count stays 33.
+
 Live API host used: `*.execute-api.us-west-2.amazonaws.com` (read-only GET calls only, machine token).
 
 ## Command and version
@@ -46,7 +48,7 @@ The description is only the operation `summary`. Nothing else from the spec is c
 | listAudio | `List audio` |
 | uploadAudio | `Upload audio` |
 
-Other examples: getHealth = `Check health`, getTrackStream = `Get a stream URL`.
+Other examples: getHealth = `Check health`, getTrackStream = `Get a track stream link`.
 Parameters have no descriptions at all (the spec has none), e.g. searchTracks takes `q, artist, genre, year, bpm_min, bpm_max, energy_min, energy_max, limit` as bare typed fields.
 Good on-camera point: the generator can only be as good as the OpenAPI text, and ours is terse.
 
