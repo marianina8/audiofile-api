@@ -19,7 +19,7 @@ test-dynamo:
 	exit $$status
 
 lint-spec:
-	npx --yes @redocly/cli@latest lint openapi.yaml
+	npx --yes @redocly/cli@2.69.0 lint openapi.yaml
 
 # sam build runs the build-<LogicalId> targets below (BuildMethod: makefile)
 # and layers/ffmpeg/Makefile for FFmpegLayer.

@@ -36,7 +36,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [ filename, size_bytes ]
+              required: [filename, size_bytes]
               properties:
                 filename:
                   type: string
@@ -50,7 +50,7 @@ paths:
                   type: string
                 content_type:
                   type: string
-                  enum: [ audio/mpeg ]
+                  enum: [audio/mpeg]
       responses:
         "201":
           description: The track was created; PUT the file to upload_url.
@@ -65,7 +65,7 @@ paths:
                     type: string
                   upload_method:
                     type: string
-                    enum: [ PUT ]
+                    enum: [PUT]
                   upload_headers:
                     type: object
                     additionalProperties:
@@ -520,7 +520,7 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [ tags ]
+              required: [tags]
               properties:
                 tags:
                   type: array
@@ -576,7 +576,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [ name ]
+              required: [name]
               properties:
                 name:
                   type: string
@@ -723,7 +723,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [ track_ids ]
+              required: [track_ids]
               properties:
                 track_ids:
                   type: array
@@ -762,7 +762,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [ track_ids ]
+              required: [track_ids]
               properties:
                 track_ids:
                   type: array
@@ -820,7 +820,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [ url, expires_at ]
+                required: [url, expires_at]
                 properties:
                   url:
                     type: string
@@ -867,7 +867,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [ file ]
+              required: [file]
               properties:
                 file:
                   type: string
@@ -935,19 +935,28 @@ components:
   responses:
     BadRequest:
       description: Bad request
-      content: &a1
+      content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
     Unauthorized:
       description: Unauthorized
-      content: *a1
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     NotFound:
       description: Not found
-      content: *a1
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     Conflict:
       description: Conflict
-      content: *a1
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
   parameters:
     playlistId:
       name: id
@@ -982,7 +991,7 @@ components:
           properties:
             code:
               type: string
-              enum: [ bad_request, not_found, conflict, payload_too_large, internal ]
+              enum: [bad_request, not_found, conflict, payload_too_large, internal]
             message:
               type: string
     Audio:
@@ -1026,7 +1035,7 @@ components:
             type: string
     TrackStatus:
       type: string
-      enum: [ processing, ready, failed ]
+      enum: [processing, ready, failed]
     Track:
       type: object
       properties:
@@ -1066,7 +1075,7 @@ components:
           type: number
         bpm_source:
           type: string
-          enum: [ tag, measured, manual ]
+          enum: [tag, measured, manual]
         energy:
           type: number
         duration_seconds:
