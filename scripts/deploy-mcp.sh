@@ -12,9 +12,9 @@
 # shape changes (the hashed ApiDeployment logical id), so this step keeps
 # parameter changes such as BridgeUrl or ServerFunctionArn from being served
 # stale.
-# It prints only "deployed <ServerName>: <McpUrl>". sam output contains ARNs
-# with the account id, so it goes to a private log that is removed on success
-# and kept (path printed) on failure.
+# It prints only "deployed <ServerName>: <McpUrl>". sam output and AWS CLI
+# errors contain ARNs with the account id, so they go to a private log that is
+# removed on success and kept (path printed) on failure.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
@@ -54,6 +54,7 @@ log="$logdir/sam.log"
 keep_log=0
 trap '[ "$keep_log" -eq 1 ] || rm -rf "$logdir"' EXIT
 fail() { keep_log=1; echo "$1 failed; log: $log" >&2; exit 1; }
+lookup_failed() { keep_log=1; echo "lookup failed; see $log" >&2; exit 1; }
 
 (cd "$dir" && sam build) >"$log" 2>&1 || fail "sam build"
 (cd "$dir" && sam deploy --region "$AWS_REGION" ${deploy_args[@]+"${deploy_args[@]}"} \
@@ -63,9 +64,9 @@ fail() { keep_log=1; echo "$1 failed; log: $log" >&2; exit 1; }
 host=""
 nested=$(af_aws cloudformation describe-stack-resources --stack-name "$stack" \
   --query "StackResources[?ResourceType=='AWS::CloudFormation::Stack'].PhysicalResourceId" \
-  --output text --no-cli-pager)
+  --output text --no-cli-pager 2>>"$log") || lookup_failed
 for s in $nested; do
-  id=$(out ApiId "$s")
+  id=$(out ApiId "$s" 2>>"$log") || lookup_failed
   if [ -n "$id" ] && [ "$id" != "None" ]; then
     [ -z "$host" ] || { echo "more than one nested mcp-host stack in $stack" >&2; exit 1; }
     host="$s"
@@ -75,6 +76,8 @@ done
 [ -n "$host" ] || { echo "no nested mcp-host stack (ApiId output) in $stack" >&2; exit 1; }
 
 af_aws apigateway create-deployment --rest-api-id "$api" --stage-name v1 \
-  --description "deploy-mcp $(date -u +%FT%TZ)" --no-cli-pager >/dev/null
+  --description "deploy-mcp $(date -u +%FT%TZ)" --no-cli-pager >/dev/null 2>>"$log" || lookup_failed
 
-echo "deployed $(out ServerName "$host"): $(out McpUrl "$host")"
+name=$(out ServerName "$host" 2>>"$log") || lookup_failed
+url=$(out McpUrl "$host" 2>>"$log") || lookup_failed
+echo "deployed $name: $url"

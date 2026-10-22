@@ -35,4 +35,31 @@ if env PATH="$tmp/bin:$PATH" TMPDIR="$tmp" STACK_NAME=mcp-generated-rehearsal SE
 fi
 grep -q "sam build failed" "$tmp/out" || { echo "FAIL - valid rehearsal pair was refused" >&2; cat "$tmp/out" >&2; exit 1; }
 echo "ok - accepts STACK_NAME=mcp-generated-rehearsal SERVER_NAME=audiofile-generated-rehearsal"
+
+# A failing AWS lookup after a successful deploy prints only a pointer to the
+# private log, never the CLI's error text (it can carry ARNs and account ids).
+mkdir "$tmp/okbin"
+printf '#!/bin/sh\nexit 0\n' >"$tmp/okbin/sam"
+chmod +x "$tmp/okbin/sam"
+for step in describe-stack-resources describe-stacks create-deployment; do
+  cat >"$tmp/okbin/aws" <<STUB
+#!/bin/sh
+case "\$*" in
+  *$step*) echo "An error occurred: arn:aws:cloudformation:us-west-2:123456789012:stack/x" >&2; exit 254 ;;
+  *describe-stack-resources*) echo "arn:nested-host" ;;
+  *ApiId*) echo "api123" ;;
+  *) echo "value" ;;
+esac
+STUB
+  chmod +x "$tmp/okbin/aws"
+  if env PATH="$tmp/okbin:$PATH" TMPDIR="$tmp" "$root/scripts/deploy-mcp.sh" "$root/servers/generated" >"$tmp/out" 2>&1; then
+    echo "FAIL - deploy succeeded although $step failed" >&2; exit 1
+  fi
+  if grep -q 123456789012 "$tmp/out" || ! grep -q "lookup failed; see " "$tmp/out"; then
+    echo "FAIL - $step failure output:" >&2; cat "$tmp/out" >&2; exit 1
+  fi
+  log=$(sed -n 's/.*lookup failed; see //p' "$tmp/out")
+  grep -q 123456789012 "$log" || { echo "FAIL - $step error not in the private log $log" >&2; exit 1; }
+  echo "ok - $step failure prints only the log path"
+done
 echo "deploy-mcp guard test: PASS"
