@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Usage: scripts/smoke.sh   (after: source scripts/token.sh)
-# Phase 1: /health is 200, /play/<bogus> is 404 and the 31 protected routes
+# Phase 1: /health is 200, /play/<bogus> is 404 and the 32 protected routes
 # return 401 with no token.
 # Phase 2: with $TOKEN, exercises all 34 routes using a temporary 12 s click
 # track (uploaded two ways) and a temporary playlist. Library tracks and
