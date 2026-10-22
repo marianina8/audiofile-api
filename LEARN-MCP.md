@@ -23,6 +23,8 @@ The video covers two things: **turning an API into an MCP server**, and **using 
 5. Click **`list_things`** and read its **name**, **description** and **annotations** (`readOnlyHint: true`). Then click `delete_thing` and compare (`destructiveHint: true`, plus an input field `name`).
 6. Select `list_things` › **Run Tool**. Then try `delete_thing` with `name` = `banana`.
 
+**Found in the lab:** the Inspector flagged a *schema portability* warning on `list_things`: the Go SDK infers `things` as `["null","array"]` (a Go slice can be nil). It's legal, but some clients reject multi-type schemas. In the curated Go server, make list fields non-nullable.
+
 **What's happening, in plain words:**
 - An MCP server is a **menu of tools**. Each tool has a name, a description written for the model, an input shape, and optional hints such as "read-only" or "destructive".
 - The **app** (Inspector here; Claude or ChatGPT in real use) asks the server for that menu (`tools/list`).
@@ -51,6 +53,6 @@ See [`OAUTH-FLOW-STORYBOARD.md`](OAUTH-FLOW-STORYBOARD.md): seven plain-language
 
 *(One sentence per step, in your own words, saved after we talk it through.)*
 
-- Step 1:
+- Step 1: An MCP server is a menu of tools, each with a name, a description, an input shape and optional hints like read-only or destructive. Any app can fetch the menu and call the tools, but because each tool describes itself, an app with an AI model in it can let the model pick the right tool for a request, and the server does the work, here by calling our API. *(Short version: the app holds the AI; the MCP server explains its tools to the AI and runs them, whether that means calling API endpoints, a database, files or a local program.)*
 - Step 2:
 - Step 3:
