@@ -54,5 +54,5 @@ See [`OAUTH-FLOW-STORYBOARD.md`](OAUTH-FLOW-STORYBOARD.md): seven plain-language
 *(One sentence per step, in your own words, saved after we talk it through.)*
 
 - Step 1: An MCP server is a menu of tools, each with a name, a description, an input shape and optional hints like read-only or destructive. Any app can fetch the menu and call the tools, but because each tool describes itself, an app with an AI model in it can let the model pick the right tool for a request, and the server does the work, here by calling our API. *(Short version: the app holds the AI; the MCP server explains its tools to the AI and runs them, whether that means calling API endpoints, a database, files or a local program.)*
-- Step 2:
+- Step 2: The app decides whether to ask before a tool runs. The server's hints only describe what kind of operation a tool is (read-only, destructive, or idempotent, meaning safe to repeat), and some apps like ChatGPT use them to decide when to ask, while others like Claude leave it to your per-tool settings.
 - Step 3:
