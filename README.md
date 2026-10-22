@@ -89,7 +89,8 @@ Order matters. Pass your own values; nothing personal is committed.
 make layer
 make build
 
-# 2. the API stack (budget alert email and a globally unique Cognito domain prefix)
+# 2. the API stack (budget alert email and a globally unique Cognito domain prefix);
+#    deploys the .aws-sam/build output of `make build`
 sam deploy --parameter-overrides AlertEmail=you@example.com CognitoDomainPrefix=<unique-prefix>
 
 # 3. create your user, then set a permanent password
@@ -99,16 +100,23 @@ scripts/set-password.sh          # run in a normal terminal: it needs a TTY
 # 4. store the machine client secret in SSM (CloudFormation can't create SecureStrings)
 scripts/store-machine-secret.sh
 
-# 5. the OAuth bridge (add ChatGPTCallbackId=<id> once ChatGPT shows you its callback)
-cd auth && sam deploy && cd ..
+# 5. the OAuth bridge: build first (auth/.aws-sam), then deploy from auth/
+make build-auth
+(cd auth && sam deploy)
+#    once ChatGPT shows you its callback id, pass it on every auth deploy from then on:
+(cd auth && sam deploy --parameter-overrides ChatGPTCallbackId=<id>)
 
-# 6. the test MCP server (two tools) behind mcp-host
+# 6. the test MCP server (two tools) behind mcp-host (deploy-mcp.sh runs sam build first)
 scripts/deploy-mcp.sh servers/mcptest
 
-# 7. on camera: generate the one-tool-per-endpoint server, patch it, deploy it
+# 7. on camera: generate the one-tool-per-endpoint server, patch it, deploy it (builds first)
 scripts/generate-server.sh --patch
 scripts/deploy-mcp.sh servers/generated
 ```
+
+`ChatGPTCallbackId` is not saved anywhere: `auth/samconfig.toml` deliberately holds no ids, so keep the id in your own notes. Pass it on every `mcp-auth` deploy. SAM reuses a parameter's previous value when you leave it out of an update, but a recreated stack starts with it empty, and ChatGPT sign-in then fails at the callback. Passing it every time removes the guesswork.
+
+Every deploy above follows a build: `make build`, `make build-auth`, or the `sam build` inside `deploy-mcp.sh`. A bare `sam deploy` in a directory you haven't built packages the source tree with no `bootstrap`.
 
 Then `source scripts/token.sh` and run `scripts/smoke.sh`. The connector URL for each MCP server is the `deployed <name>: <McpUrl>` line `deploy-mcp.sh` prints.
 
@@ -150,7 +158,7 @@ I also tried guessing missing genres with a Bedrock audio model. It did not work
 go test ./...        # unit tests, spec/template/router coverage test
 make test-dynamo     # store and OAuth contracts against DynamoDB Local (Docker)
 make lint-spec       # redocly lint of openapi.yaml
-scripts/test/*.sh    # script guards, smoke dry run, generated-server test
+for t in scripts/test/*.sh; do "$t"; done   # script guards, smoke dry run, generated-server test
 ```
 
 Tests that need ffmpeg skip with a message if it isn't installed.
@@ -165,6 +173,7 @@ sam delete --stack-name mcp-test
 sam delete --stack-name mcp-auth
 aws s3 rm s3://<BucketName> --recursive       # BucketName is a stack output of audiofile-api
 sam delete --stack-name audiofile-api
+aws ssm delete-parameter --name /audiofile/machine-client-secret   # created by store-machine-secret.sh, outside CloudFormation
 ```
 
 This deletes the library. `~/audio` is the backup, so `scripts/seed.sh` re-seeds it. If SAM hits the SSO error, use the export-credentials workaround from [docs/aws-setup.md](docs/aws-setup.md) first.
@@ -177,6 +186,23 @@ This deletes the library. `~/audio` is the backup, so `scripts/seed.sh` re-seeds
 - Tool-approval behaviour differs by app. Summary in [TEST-APPROVALS.md](TEST-APPROVALS.md): ChatGPT leans on hints and tool names, Claude Code asks for everything by default, Claude Desktop defaults to allow.
 - Cognito remembers your session and may skip the sign-in page. Use a private window when recording.
 - Lambda caps request payloads at about 6 MB (legacy `/upload`); real uploads use presigned URLs.
+
+## Recording notes
+
+Checklist before each take:
+
+- **Reset state.** Run `scripts/reset-playlists.sh` before every take so the demo starts with no playlists.
+- **Fresh AWS session.** The `audiofile-admin` SSO session lasts 8 hours: run `aws sso login --profile audiofile-admin --use-device-code` before you start. If `sam` then fails with `GetRoleCredentials ... No access`, use the export-credentials workaround from [docs/aws-setup.md](docs/aws-setup.md).
+- **Private browser window.** Cognito remembers your session and may skip its sign-in page. A private window makes it show.
+- **Approvals.** In Claude's connector settings, set every `delete*` tool to *Needs approval* so a delete is visible on screen and never runs unasked.
+- **MCP Inspector.** Show it pinned: `npx @modelcontextprotocol/inspector@2.10.1` (the version the tests use). The bridge allowlists its fixed callback on port 6274 (`http://localhost:6274/oauth/callback` and `http://127.0.0.1:6274/oauth/callback`), so Inspector sign-in works with no registration step.
+
+Keep these off camera:
+
+- **Uploads.** Don't call `createTrackUpload` or `uploadAudio` (or `POST /tracks/uploads`) on camera. Presigned upload URLs embed temporary credentials, and the account id can be decoded from them. If you must show one, blur it.
+- **The player page source.** The `/play/<pid>` page holds presigned track URLs. Don't open devtools or view-source on it.
+- **Caller identity.** Don't run `aws sts get-caller-identity` unmasked: it prints the account id and role ARN.
+- **Tokens, emails and account ids** in general. Server URLs and tool names are fine to show.
 
 ## Account hygiene
 
@@ -191,3 +217,7 @@ Turn on MFA for the root user and don't use it for this. Use short-lived credent
 - [docs/aws-setup.md](docs/aws-setup.md): the `audiofile-admin` identity and SSO notes
 - [docs/notes/genre-guess.md](docs/notes/genre-guess.md), [docs/notes/resource-binding.md](docs/notes/resource-binding.md): findings
 - [docs/superpowers/specs/2026-10-20-audiofile-api-design.md](docs/superpowers/specs/2026-10-20-audiofile-api-design.md): design spec
+
+## License
+
+MIT. See [LICENSE](LICENSE).

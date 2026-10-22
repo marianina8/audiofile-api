@@ -4,7 +4,13 @@ The video covers two things: **turning an API into an MCP server**, and **using 
 
 > Recording? Keep tokens, emails and account IDs off screen. The server URL and tool names are fine to show.
 
-**Server URL** (`McpUrl` of the `mcp-test` stack): `https://jxnckktxp3.execute-api.us-west-2.amazonaws.com/v1/mcp`
+**Server URL:** `<McpUrl>`, the `McpUrl` output of the `mcp-test` stack:
+
+```sh
+aws cloudformation describe-stacks --stack-name mcp-test --profile audiofile-admin \
+  --query "Stacks[0].Outputs[?OutputKey=='McpUrl'].OutputValue" --output text
+```
+
 **Sign-in:** your Cognito user (the one from `scripts/set-password.sh`).
 
 ---
@@ -12,8 +18,9 @@ The video covers two things: **turning an API into an MCP server**, and **using 
 ## Step 1: What an MCP server is made of
 
 **Do:**
-1. In a normal Terminal: `npx @modelcontextprotocol/inspector`
+1. In a normal Terminal: `npx @modelcontextprotocol/inspector@2.10.1` (pinned: the version the repo's tests use).
    It opens **http://localhost:6274** in your browser. Keep that Terminal open.
+   The OAuth bridge allowlists the Inspector's fixed callback on port 6274 (`http://localhost:6274/oauth/callback` and `http://127.0.0.1:6274/oauth/callback`), so sign-in needs no extra setup. Keep the Inspector on that port.
 2. In the Inspector's left panel:
    - **Transport Type:** `Streamable HTTP`
    - **URL:** the server URL above

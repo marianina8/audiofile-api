@@ -86,7 +86,7 @@ returns only `name`, `description`, `inputSchema`. So a client sees `deleteTrack
 
 ## Live calls (patched server, restarted per call)
 
-All through MCP Inspector CLI: `npx --yes @modelcontextprotocol/inspector --cli http://localhost:3000/mcp --transport http --method tools/call --tool-name <name> --tool-arg key=value`
+All through MCP Inspector CLI: `npx --yes @modelcontextprotocol/inspector@2.10.1 --cli http://localhost:3000/mcp --transport http --method tools/call --tool-name <name> --tool-arg key=value`
 (`--transport http` is required; without it the CLI guesses wrong.) Note `tools/list` uses `--method tools/list` with the same flags.
 
 - `tools/list`: 33 tools.
