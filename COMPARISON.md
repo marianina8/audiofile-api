@@ -77,5 +77,5 @@ Differences in values (not shape):
 
 ## Decision for you
 
-- [ ] Approve: the book routes keep their shapes, with the value changes listed above (`Path`, `transcript`, `Status` mapping, `.mp3`-only, 4.5 MB cap, 400/404 codes).
-- [ ] Anything you'd like kept closer to the book (for example, accepting non-mp3 uploads, or the CLI)?
+- [x] Approve (Marian, 2026-10-22): the book routes keep their shapes, with the value changes listed above (`Path`, `transcript`, `Status` mapping, `.mp3`-only, 4.5 MB cap, 400/404 codes).
+- [x] Nothing to keep closer to the book.
