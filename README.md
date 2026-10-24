@@ -24,7 +24,7 @@ flowchart LR
     RS[Cognito resource server<br/>+ SSM registration]
     S1[servers/mcptest<br/>Go, 2 tools]
     S2[servers/generated<br/>Node, 33 tools]
-    S3[servers/curated<br/>Go, 6 tools]
+    S4[servers/curated<br/>Go, 6 tools]
   end
   subgraph api[audiofile-api stack]
     UP[Cognito user pool<br/>managed login, machine client]
@@ -38,8 +38,8 @@ flowchart LR
   C & G -->|OAuth| B --> UP
   B --- BT
   B -.reads registered URLs.-> RS
-  C & G -->|MCP, token aud = server URL| R --> S1 & S2
-  S1 & S2 -->|client_credentials token| H
+  C & G -->|MCP, token aud = server URL| R --> S1 & S2 & S4
+  S1 & S2 & S4 -->|client_credentials token| H
   M -->|user token| H --> A --> D
   A -->|presigned URLs| S3
   M -->|presigned PUT| S3 -->|ObjectCreated| P --> D
@@ -187,7 +187,7 @@ Delete in reverse order. `sam delete` does not empty S3 buckets, so empty the bu
 
 ```sh
 sam delete --stack-name mcp-generated        # if you deployed it
-sam delete --stack-name mcp-curated        # if you deployed it
+sam delete --stack-name mcp-curated          # if you deployed it
 sam delete --stack-name mcp-test
 sam delete --stack-name mcp-auth
 aws s3 rm s3://<BucketName> --recursive       # BucketName is a stack output of audiofile-api
