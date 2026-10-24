@@ -1,0 +1,185 @@
+{
+  "items": [
+    {
+      "id": "3b96d8ed-05eb-4ef2-a54f-1b2284182f3a",
+      "title": "Abstract Piano",
+      "artist": "Silentvoice",
+      "status": "ready",
+      "bpm": 117.3,
+      "bpm_source": "measured",
+      "energy": 0.51,
+      "duration_seconds": 76.538776
+    },
+    {
+      "id": "bf5fc2cc-a717-431d-9436-12507001f3c9",
+      "title": "Alex Morgan Track 1",
+      "artist": "Alex Morgan",
+      "status": "ready",
+      "bpm": 110,
+      "bpm_source": "measured",
+      "energy": 0.74,
+      "duration_seconds": 132.72
+    },
+    {
+      "id": "9f9110c8-480b-42e0-b736-9114b7112e82",
+      "title": "Apalonbeats Track 1",
+      "artist": "Apalonbeats",
+      "status": "ready",
+      "bpm": 119.5,
+      "bpm_source": "measured",
+      "energy": 0.42,
+      "duration_seconds": 122.697143
+    },
+    {
+      "id": "48b514f3-5305-4219-84d8-30949f8eb2c6",
+      "title": "Arpmedia Track 1",
+      "artist": "Arpmedia",
+      "status": "ready",
+      "bpm": 132.5,
+      "bpm_source": "measured",
+      "energy": 0.66,
+      "duration_seconds": 148.610612
+    },
+    {
+      "id": "65b0bfe3-8e19-4a4e-82f5-80bd62dedf1d",
+      "title": "Audiocoffee Track 1",
+      "artist": "Audiocoffee",
+      "status": "ready",
+      "bpm": 99.9,
+      "bpm_source": "measured",
+      "energy": 0.86,
+      "duration_seconds": 138.03102
+    },
+    {
+      "id": "9c48163e-e14f-4a42-b08b-3c96ea982d5b",
+      "title": "Dailyvibe Track 1",
+      "artist": "Dailyvibe",
+      "status": "ready",
+      "bpm": 112.1,
+      "bpm_source": "measured",
+      "energy": 0.66,
+      "duration_seconds": 176.953469
+    },
+    {
+      "id": "4ae6790d-c5b8-4d4e-8323-cdede6df334a",
+      "title": "Dancing In The Stardust",
+      "artist": "FreeSoundServer",
+      "status": "ready",
+      "bpm": 133.8,
+      "bpm_source": "measured",
+      "energy": 0.44,
+      "duration_seconds": 118.44
+    },
+    {
+      "id": "eb27ee61-66af-4fe2-a277-b3d3d271dab3",
+      "title": "Guitar Chrome Etiquette",
+      "artist": "Cinematic Soul",
+      "status": "ready",
+      "bpm": 110.8,
+      "bpm_source": "measured",
+      "energy": 0.76,
+      "duration_seconds": 73.848163
+    },
+    {
+      "id": "0d65663e-c4f0-4a5c-acd2-6f59013a816c",
+      "title": "Iron Ashes Rising",
+      "artist": "Poorartistt",
+      "status": "ready",
+      "bpm": 125.3,
+      "bpm_source": "measured",
+      "energy": 0.58,
+      "duration_seconds": 240.024
+    },
+    {
+      "id": "6367d6d6-bdb2-48a3-ab45-285f67b6bc3e",
+      "title": "Leberch Track 1",
+      "artist": "Leberch",
+      "status": "ready",
+      "bpm": 82,
+      "bpm_source": "measured",
+      "energy": 0.31,
+      "duration_seconds": 152.032653
+    },
+    {
+      "id": "5a573ba6-c7b5-4d76-87d4-7f7db3834808",
+      "title": "Machine Blood Ritual",
+      "artist": "Poorartistt",
+      "status": "ready",
+      "bpm": 178.6,
+      "bpm_source": "measured",
+      "energy": 0.51,
+      "duration_seconds": 240.024
+    },
+    {
+      "id": "3fdd75b1-1ef1-4e90-a6ef-57c7e52506ed",
+      "title": "Morning Fog",
+      "artist": "Silentvoice",
+      "status": "ready",
+      "bpm": 123.7,
+      "bpm_source": "measured",
+      "energy": 0.19,
+      "duration_seconds": 61.675102
+    },
+    {
+      "id": "2813c62a-3f10-4c3b-a77e-3d9557a97889",
+      "title": "Nastelbom Track 1",
+      "artist": "Nastelbom",
+      "status": "ready",
+      "bpm": 92.1,
+      "bpm_source": "measured",
+      "energy": 0.61,
+      "duration_seconds": 133.433469
+    },
+    {
+      "id": "69a7cc46-9f42-425d-8c6f-f5f6510abbeb",
+      "title": "Prettyjohn1 Track 1",
+      "artist": "Prettyjohn1",
+      "status": "ready",
+      "bpm": 152,
+      "bpm_source": "measured",
+      "energy": 0.86,
+      "duration_seconds": 72.672653
+    },
+    {
+      "id": "f97869bc-aa47-4c5a-a629-4f327c6698d4",
+      "title": "Q",
+      "artist": "Tazdev Music",
+      "status": "ready",
+      "bpm": 123.7,
+      "bpm_source": "measured",
+      "energy": 0.98,
+      "duration_seconds": 130.690612
+    },
+    {
+      "id": "3d4a7c1e-444c-4ed8-b9b5-f4ff3a4a575f",
+      "title": "Scary Intro",
+      "artist": "Cinematic Soul",
+      "status": "ready",
+      "bpm": 120.2,
+      "bpm_source": "measured",
+      "energy": 0.69,
+      "duration_seconds": 62.72
+    },
+    {
+      "id": "b6afbb7a-73df-48e1-96cc-24ffeee77d58",
+      "title": "Studiokolomna Track 1",
+      "artist": "Studiokolomna",
+      "status": "ready",
+      "bpm": 123.8,
+      "bpm_source": "measured",
+      "energy": 0.86,
+      "duration_seconds": 128.417959
+    },
+    {
+      "id": "13c3c517-698c-4ce9-84ec-09f0ef7f7f1f",
+      "title": "The Zodiac",
+      "artist": "Xhowiexo",
+      "status": "ready",
+      "bpm": 60,
+      "bpm_source": "measured",
+      "energy": 0.58,
+      "duration_seconds": 310.047347
+    }
+  ],
+  "note": "Snapshot of the deployed library on 2026-10-24 (GET /tracks, trimmed to the fields Server B uses)."
+}
