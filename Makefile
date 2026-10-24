@@ -1,4 +1,4 @@
-.PHONY: test test-dynamo lint-spec build layer validate validate-auth build-auth validate-mcphost build-mcphost build-ApiFunction build-ProcessorFunction build-BridgeFunction build-AuthorizerFunction build-McpTestFunction validate-mcptest build-mcptest validate-generated build-generated
+.PHONY: test test-dynamo lint-spec build layer validate validate-auth build-auth validate-mcphost build-mcphost build-ApiFunction build-ProcessorFunction build-BridgeFunction build-AuthorizerFunction build-McpTestFunction validate-mcptest build-mcptest validate-generated build-generated validate-curated build-curated
 
 LAMBDA_GO := GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -tags lambda.norpc -trimpath -ldflags="-s -w"
 
@@ -79,3 +79,13 @@ validate-generated:
 
 build-generated: validate-generated
 	cd servers/generated && sam build -t template.yaml
+
+# Server B, the curated MCP server (internal/curated); nests mcphost/template.yaml.
+build-CuratedServerFunction:
+	$(LAMBDA_GO) -o $(ARTIFACTS_DIR)/bootstrap ./servers/curated
+
+validate-curated:
+	sam validate --lint -t servers/curated/template.yaml
+
+build-curated: validate-curated
+	cd servers/curated && sam build -t template.yaml

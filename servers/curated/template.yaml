@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: mcp-curated - Server B, six hand-designed tools over the audiofile API, behind the reusable mcp-host stack
+
+Parameters:
+  ServerName:
+    Type: String
+    Default: audiofile-curated
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{0,62}$"
+    Description: mcp-host server name (rehearsals override it, see scripts/deploy-mcp.sh).
+
+Resources:
+  # Receives REST proxy events that carry the caller's bearer token: never log
+  # them. The server ignores it and calls the API with its own machine token.
+  CuratedServerFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      CodeUri: ../..
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures: [arm64]
+      MemorySize: 128
+      Timeout: 15
+      Environment:
+        Variables:
+          API_BASE_URL: !ImportValue audiofile-api-ApiUrl
+          MACHINE_CLIENT_ID: !ImportValue audiofile-api-MachineClientId
+          TOKEN_URL: !Sub
+            - ${CognitoDomain}/oauth2/token
+            - CognitoDomain: !ImportValue audiofile-api-CognitoDomain
+      # The secret is a SecureString under the AWS managed aws/ssm key, whose
+      # key policy already lets account principals decrypt through SSM, so no
+      # kms:Decrypt statement is needed (a customer managed key would need one).
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/audiofile/machine-client-secret
+
+  CuratedServerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CuratedServerFunction}
+      RetentionInDays: 14
+
+  McpHost:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ../../mcphost/template.yaml
+      Parameters:
+        ServerName: !Ref ServerName
+        ServerFunctionArn: !GetAtt CuratedServerFunction.Arn
+        BridgeUrl: !ImportValue audiofile-auth-BridgeUrl
+        IssuerUrl: !ImportValue audiofile-api-IssuerUrl
+        UserPoolId: !ImportValue audiofile-api-UserPoolId
+
+Outputs:
+  McpUrl:
+    Description: MCP server URL to add as a connector
+    Value: !GetAtt McpHost.Outputs.McpUrl

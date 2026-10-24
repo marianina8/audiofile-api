@@ -24,6 +24,7 @@ flowchart LR
     RS[Cognito resource server<br/>+ SSM registration]
     S1[servers/mcptest<br/>Go, 2 tools]
     S2[servers/generated<br/>Node, 33 tools]
+    S3[servers/curated<br/>Go, 6 tools]
   end
   subgraph api[audiofile-api stack]
     UP[Cognito user pool<br/>managed login, machine client]
@@ -49,7 +50,7 @@ Three kinds of stack:
 
 - **audiofile-api** (`template.yaml`): Cognito user pool with managed login, a CLI app client, a machine app client for MCP-to-API calls, an HTTP API with a JWT authorizer, the `api` Lambda, the S3-triggered `processor` Lambda with an ffmpeg/ffprobe layer, a private S3 bucket, four DynamoDB tables, and a $10/month budget.
 - **mcp-auth** (`auth/`): the OAuth bridge (Lambda behind its own HTTP API) and a small DynamoDB table with TTL. It sits in front of Cognito and speaks the MCP authorization flow (metadata discovery, DCR, client ID metadata documents, PKCE).
-- **mcp-host** (`mcphost/`, nested by each server's template): a REST API with a TOKEN authorizer that checks signature, issuer, audience and the `mcp-users` group; the protected-resource metadata document; a Cognito resource server; and an SSM parameter that registers the server's URL with the bridge. It currently fronts `servers/mcptest` and `servers/generated`.
+- **mcp-host** (`mcphost/`, nested by each server's template): a REST API with a TOKEN authorizer that checks signature, issuer, audience and the `mcp-users` group; the protected-resource metadata document; a Cognito resource server; and an SSM parameter that registers the server's URL with the bridge. It currently fronts `servers/mcptest`, `servers/generated` and `servers/curated`.
 
 Resource names are CloudFormation-generated. URLs are the default execute-api URLs.
 
@@ -112,6 +113,9 @@ scripts/deploy-mcp.sh servers/mcptest
 # 7. on camera: generate the one-tool-per-endpoint server, patch it, deploy it (builds first)
 scripts/generate-server.sh --patch
 scripts/deploy-mcp.sh servers/generated
+
+# 8. Server B, the curated server (ask the owner first; see "Server B" below)
+scripts/deploy-mcp.sh servers/curated
 ```
 
 `ChatGPTCallbackId` is not saved anywhere: `auth/samconfig.toml` deliberately holds no ids, so keep the id in your own notes. Pass it on every `mcp-auth` deploy. SAM reuses a parameter's previous value when you leave it out of an update, but a recreated stack starts with it empty, and ChatGPT sign-in then fails at the callback. Passing it every time removes the guesswork.
@@ -152,6 +156,20 @@ I also tried guessing missing genres with a Bedrock audio model. It did not work
 | `scripts/patch-generated-server.sh <dir>` | Makes the generated server work on Lambda: stateless transport, request-body fix, `PORT`, machine-token auth. Idempotent |
 | `scripts/deploy-mcp.sh <dir>` | Builds and deploys an MCP server stack, then forces a fresh API Gateway deployment. `STACK_NAME` and `SERVER_NAME` (set both) deploy a rehearsal stack that can't touch the real one |
 
+## Server B: the curated MCP server
+
+`servers/curated` (code in `internal/curated`) is the designed counterpart to the generated server: 6 tools instead of 33. They are `find_tracks`, `build_workout_mix`, `list_playlists`, `show_playlist`, `edit_playlist` and `delete_playlist`. Only `ready` tracks are ever used, and the mood rule lives in one place in the code: `upbeat` is bpm >= 120 and energy >= 0.6, `calm` is energy < 0.5, `any` has no rule. Left out on purpose: deleting tracks, uploads and the legacy routes. Like Server A, it calls the API with its own cached machine token and never forwards the caller's.
+
+Run it locally (no AWS needed when `MACHINE_CLIENT_SECRET` is set; otherwise the secret is read from SSM):
+
+```sh
+PORT=3999 API_BASE_URL=<api url> MACHINE_CLIENT_ID=<id> TOKEN_URL=<cognito domain>/oauth2/token \
+  MACHINE_CLIENT_SECRET=<secret> go run ./servers/curated
+# MCP endpoint: http://127.0.0.1:3999/mcp
+```
+
+Deploy with `scripts/deploy-mcp.sh servers/curated` (stack `mcp-curated`, server name `audiofile-curated`). It changes the live account, so get the owner's OK first. Design: [docs/superpowers/specs/2026-10-24-server-b-curated-design.md](docs/superpowers/specs/2026-10-24-server-b-curated-design.md).
+
 ## Testing
 
 ```sh
@@ -169,6 +187,7 @@ Delete in reverse order. `sam delete` does not empty S3 buckets, so empty the bu
 
 ```sh
 sam delete --stack-name mcp-generated        # if you deployed it
+sam delete --stack-name mcp-curated        # if you deployed it
 sam delete --stack-name mcp-test
 sam delete --stack-name mcp-auth
 aws s3 rm s3://<BucketName> --recursive       # BucketName is a stack output of audiofile-api
@@ -217,6 +236,7 @@ Turn on MFA for the root user and don't use it for this. Use short-lived credent
 - [docs/aws-setup.md](docs/aws-setup.md): the `audiofile-admin` identity and SSO notes
 - [docs/notes/genre-guess.md](docs/notes/genre-guess.md), [docs/notes/resource-binding.md](docs/notes/resource-binding.md): findings
 - [docs/superpowers/specs/2026-10-20-audiofile-api-design.md](docs/superpowers/specs/2026-10-20-audiofile-api-design.md): design spec
+- [docs/superpowers/specs/2026-10-24-server-b-curated-design.md](docs/superpowers/specs/2026-10-24-server-b-curated-design.md): Server B design spec
 
 ## License
 
