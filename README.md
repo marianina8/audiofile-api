@@ -155,6 +155,7 @@ I also tried guessing missing genres with a Bedrock audio model. It did not work
 | `scripts/generate-server.sh [--patch] [--force]` | Runs openapi-mcp-generator 4.1.0 into `servers/generated/app` (not in git) |
 | `scripts/patch-generated-server.sh <dir>` | Makes the generated server work on Lambda: stateless transport, request-body fix, `PORT`, machine-token auth. Idempotent |
 | `scripts/deploy-mcp.sh <dir>` | Builds and deploys an MCP server stack, then forces a fresh API Gateway deployment. `STACK_NAME` and `SERVER_NAME` (set both) deploy a rehearsal stack that can't touch the real one |
+| `scripts/tool-calls.sh generated\|curated [--since 10m]` | Live view of the tools Server A or B actually called: time, tool name, running count. Reads CloudWatch; prints no URLs, inputs or ids |
 
 ## Server B: the curated MCP server
 
