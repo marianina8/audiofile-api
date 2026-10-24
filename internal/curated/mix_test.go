@@ -260,5 +260,3 @@ func TestNoNilSlices(t *testing.T) {
 		t.Fatal("nil slice returned")
 	}
 }
-
-func ptr[T any](v T) *T { return &v }
