@@ -58,7 +58,7 @@ var _ API = (*Client)(nil)
 
 func NewClient(baseURL string, tok TokenSource, hc *http.Client) *Client {
 	if hc == nil {
-		hc = &http.Client{Timeout: 15 * time.Second}
+		hc = &http.Client{Timeout: 10 * time.Second}
 	}
 	return &Client{base: baseURL, tok: tok, hc: hc}
 }
@@ -81,6 +81,10 @@ func (c *Client) Tracks(ctx context.Context) ([]Track, error) {
 		all = append(all, page.Items...)
 		if page.NextCursor == "" {
 			return all, nil
+		}
+		if page.NextCursor == cursor {
+			// Following it again would loop forever.
+			return nil, errors.New("list tracks: API returned the same page cursor twice")
 		}
 		cursor = page.NextCursor
 	}
@@ -162,7 +166,7 @@ func (c *Client) do(ctx context.Context, op, method, path string, body, out any)
 		}
 		status, data, err := c.send(ctx, method, path, tok, payload)
 		if err != nil {
-			return fmt.Errorf("%s: request failed: %w", op, unwrapURLError(err))
+			return fmt.Errorf("%s: request failed: %w", op, transportError(err, "the API"))
 		}
 		if status == http.StatusUnauthorized {
 			c.tok.Invalidate()

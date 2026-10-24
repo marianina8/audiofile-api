@@ -18,6 +18,7 @@ import (
 )
 
 func main() {
+	// 10s per call; tool calls as a whole stop 2s before the Lambda deadline.
 	hc := &http.Client{Timeout: 10 * time.Second}
 	secret := curated.SSMSecret("/audiofile/machine-client-secret")
 	if s := os.Getenv("MACHINE_CLIENT_SECRET"); s != "" {

@@ -242,3 +242,21 @@ func TestPlaylistWrites(t *testing.T) {
 		}
 	}
 }
+
+func TestTracksRepeatedCursorFails(t *testing.T) {
+	var calls atomic.Int32
+	c, _ := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) > 5 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": []Track{{ID: "t", Status: "ready"}}, "next_cursor": "same"})
+	}), 3600)
+	_, err := c.Tracks(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "same page cursor twice") {
+		t.Fatalf("err = %v", err)
+	}
+	if n := calls.Load(); n != 2 {
+		t.Errorf("pages fetched = %d, want 2", n)
+	}
+}

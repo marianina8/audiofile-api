@@ -22,7 +22,9 @@ Resources:
       Runtime: provided.al2023
       Architectures: [arm64]
       MemorySize: 128
-      Timeout: 15
+      # Under API Gateway's 29s limit. Tool calls stop 2s before this deadline
+      # so a slow API still returns a tool error (see withReplyTime).
+      Timeout: 28
       Environment:
         Variables:
           API_BASE_URL: !ImportValue audiofile-api-ApiUrl

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -54,7 +55,8 @@ func (m *machineToken) Token(ctx context.Context) (string, error) {
 	}
 	secret, err := m.secret(ctx)
 	if err != nil {
-		return "", fmt.Errorf("read machine client secret: %w", err)
+		// AWS errors can name the account and role; report only the cause.
+		return "", errors.New("could not read the machine client secret")
 	}
 	form := url.Values{"grant_type": {"client_credentials"}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.tokenURL, strings.NewReader(form.Encode()))
@@ -65,8 +67,8 @@ func (m *machineToken) Token(ctx context.Context) (string, error) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := m.hc.Do(req)
 	if err != nil {
-		// Do's error embeds the URL; report only the cause.
-		return "", fmt.Errorf("token request failed: %w", unwrapURLError(err))
+		// Do's error embeds the URL and the dial error the host; report only the cause.
+		return "", fmt.Errorf("token request failed: %w", transportError(err, "the token endpoint"))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -90,13 +92,17 @@ func (m *machineToken) Invalidate() {
 	m.tok = ""
 }
 
-// unwrapURLError strips the *url.Error wrapper, which carries the request URL.
-func unwrapURLError(err error) error {
-	var ue *url.Error
-	if errors.As(err, &ue) {
-		return ue.Err
+// transportError maps a failed request to a plain cause. The original error
+// can carry the URL, host and port, so none of it is kept.
+func transportError(err error, target string) error {
+	var ne net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()) {
+		return errors.New("timed out")
 	}
-	return err
+	if errors.Is(err, context.Canceled) {
+		return errors.New("cancelled")
+	}
+	return errors.New("could not reach " + target)
 }
 
 // SSMSecret reads a SecureString parameter, decrypted, and caches it after the
@@ -112,13 +118,14 @@ func SSMSecret(name string) func(ctx context.Context) (string, error) {
 		if value != "" {
 			return value, nil
 		}
+		// AWS errors can name the account and role, so they are not passed on.
 		cfg, err := config.LoadDefaultConfig(ctx)
 		if err != nil {
-			return "", fmt.Errorf("load AWS config: %w", err)
+			return "", errors.New("could not load AWS config")
 		}
 		out, err := ssm.NewFromConfig(cfg).GetParameter(ctx, &ssm.GetParameterInput{Name: aws.String(name), WithDecryption: aws.Bool(true)})
 		if err != nil {
-			return "", fmt.Errorf("read parameter %s: %w", name, err)
+			return "", errors.New("could not read the machine client secret")
 		}
 		value = aws.ToString(out.Parameter.Value)
 		return value, nil

@@ -26,7 +26,8 @@ var buildMixTool = &mcp.Tool{
 		" shape=steady (default) uses upbeat tracks only, in BPM order; shape=arc goes warm-up, then upbeat peak, then cooldown, with each track labelled. " +
 		"With minutes it stops once the target is reached (it may run over by one track). " +
 		"It never pads with tracks that don't qualify; if there isn't enough music it says so in `note`. " +
-		"If the name is taken it adds 2, 3 and so on. It won't delete or change existing playlists or tracks.",
+		"If the name is taken it adds 2, 3 and so on. There is no mood parameter: steady mixes are always upbeat (120+ BPM, energy 0.6+). " +
+		"It won't delete or change existing playlists or tracks.",
 	Annotations: &mcp.ToolAnnotations{Title: "Build workout mix", DestructiveHint: ptr(false), OpenWorldHint: ptr(false)},
 }
 
@@ -102,6 +103,7 @@ type findInput struct {
 type findOutput struct {
 	Tracks  []TrackOut `json:"tracks"`
 	Count   int        `json:"count"`
+	Total   int        `json:"total" jsonschema:"how many tracks matched before the limit"`
 	Minutes float64    `json:"minutes"`
 }
 
@@ -199,14 +201,19 @@ func (t *tools) findTracks(ctx context.Context, in findInput) (*mcp.CallToolResu
 	if err != nil {
 		return toolError(err.Error()), findOutput{}, nil
 	}
-	found := FindTracks(lib, Filter{Mood: mood, BPMMin: in.BPMMin, BPMMax: in.BPMMax,
-		EnergyMin: in.EnergyMin, EnergyMax: in.EnergyMax, MinSeconds: in.MinSeconds, MaxSeconds: in.MaxSeconds}, limit)
-	out := findOutput{Tracks: tracksOut(found), Count: len(found), Minutes: Minutes(sum(found))}
+	all := FindTracks(lib, Filter{Mood: mood, BPMMin: in.BPMMin, BPMMax: in.BPMMax,
+		EnergyMin: in.EnergyMin, EnergyMax: in.EnergyMax, MinSeconds: in.MinSeconds, MaxSeconds: in.MaxSeconds}, -1)
+	found := all[:min(limit, len(all))]
+	out := findOutput{Tracks: tracksOut(found), Count: len(found), Total: len(all), Minutes: Minutes(sum(found))}
 	kind := "tracks"
 	if mood != Any {
 		kind = string(mood) + " tracks"
 	}
-	return textResult(fmt.Sprintf("%d %s, %s minutes: %s", out.Count, kind, fmtMinutes(sum(found)), joinTitles(found))), out, nil
+	msg := fmt.Sprintf("%d %s, %s minutes: %s", out.Count, kind, fmtMinutes(sum(found)), joinTitles(found))
+	if out.Total > out.Count {
+		msg += fmt.Sprintf(" (showing %d of %d)", out.Count, out.Total)
+	}
+	return textResult(msg), out, nil
 }
 
 func joinTitles(ts []Track) string {
@@ -399,6 +406,13 @@ func (t *tools) editPlaylist(ctx context.Context, in editInput) (*mcp.CallToolRe
 			removed = append(removed, lookup(byID, []string{id})[0].Title)
 		}
 	}
+	// An id to remove that isn't in the playlist is reported, not an error.
+	var notIn []string
+	for _, id := range in.RemoveTrackIDs {
+		if !slices.Contains(current, id) {
+			notIn = append(notIn, id[:min(8, len(id))])
+		}
+	}
 	stopped := func(step string, err error) (*mcp.CallToolResult, editOutput, error) {
 		return toolError(fmt.Sprintf("editing playlist '%s' (id %s) stopped at %s: %v. Earlier steps were already applied; use show_playlist to see its state.", p.Name, p.ID, step, err)), editOutput{}, nil
 	}
@@ -460,8 +474,12 @@ func (t *tools) editPlaylist(ctx context.Context, in editInput) (*mcp.CallToolRe
 		added = []string{}
 	}
 	out := editOutput{PlaylistID: p.ID, Name: p.Name, Removed: removed, Added: added, Tracks: tracksOut(ts), Minutes: Minutes(sum(ts)), PlayerLink: link}
-	return textResult(fmt.Sprintf("Edited '%s': removed %d, added %d, now %d tracks, %s minutes. Player: %s",
-		p.Name, len(removed), len(added), len(ts), fmtMinutes(sum(ts)), link)), out, nil
+	msg := fmt.Sprintf("Edited '%s': removed %d, added %d, now %d tracks, %s minutes. Player: %s",
+		p.Name, len(removed), len(added), len(ts), fmtMinutes(sum(ts)), link)
+	if len(notIn) > 0 {
+		msg += "\nnot in playlist: " + strings.Join(notIn, ", ")
+	}
+	return textResult(msg), out, nil
 }
 
 func (t *tools) deletePlaylist(ctx context.Context, in playlistInput) (*mcp.CallToolResult, deleteOutput, error) {

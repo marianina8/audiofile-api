@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -26,7 +28,9 @@ type fakeAPI struct {
 	calls          []string
 	created        []Playlist
 	failPlayerLink bool
-	n              int
+	// blockPlayerLink makes PlayerLink wait for its context to end.
+	blockPlayerLink bool
+	n               int
 }
 
 func newFake(t *testing.T) *fakeAPI { return &fakeAPI{tracks: loadFixture(t)} }
@@ -161,7 +165,11 @@ func (f *fakeAPI) DeletePlaylist(_ context.Context, id string) error {
 	return nil
 }
 
-func (f *fakeAPI) PlayerLink(_ context.Context, id string) (string, error) {
+func (f *fakeAPI) PlayerLink(ctx context.Context, id string) (string, error) {
+	if f.blockPlayerLink {
+		<-ctx.Done()
+		return "", fmt.Errorf("create player link: %w", ctx.Err())
+	}
 	if f.failPlayerLink {
 		return "", errors.New("create player link: API returned 503")
 	}
@@ -343,8 +351,9 @@ func TestFindTracksUpbeat(t *testing.T) {
 
 func TestFindTracksBadInput(t *testing.T) {
 	cs := connect(t, newFake(t), nil)
+	// The schema enum rejects it before the handler; the error names the choices.
 	r := call(t, cs, "find_tracks", map[string]any{"mood": "chill"})
-	if !r.IsError || !strings.Contains(resText(t, r), "upbeat|calm|any") {
+	if !r.IsError || !strings.Contains(resText(t, r), "[upbeat calm any]") {
 		t.Fatalf("mood: %+v %s", r.IsError, resText(t, r))
 	}
 	r = call(t, cs, "find_tracks", map[string]any{"limit": 101})
@@ -444,7 +453,7 @@ func TestBuildMinutesOutOfRange(t *testing.T) {
 func TestBuildBadShape(t *testing.T) {
 	cs := connect(t, newFake(t), nil)
 	r := call(t, cs, "build_workout_mix", map[string]any{"shape": "wave"})
-	if !r.IsError || !strings.Contains(resText(t, r), "steady|arc") {
+	if !r.IsError || !strings.Contains(resText(t, r), "[steady arc]") {
 		t.Fatalf("%q", resText(t, r))
 	}
 }
@@ -555,7 +564,7 @@ func TestEditBadOrder(t *testing.T) {
 	f.seed("Mix", nil)
 	cs := connect(t, f, nil)
 	r := call(t, cs, "edit_playlist", map[string]any{"playlist": "Mix", "order": "shuffle"})
-	if !r.IsError || !strings.Contains(resText(t, r), "keep|bpm_asc|bpm_desc|arc") {
+	if !r.IsError || !strings.Contains(resText(t, r), "[keep bpm_asc bpm_desc arc]") {
 		t.Fatalf("%q", resText(t, r))
 	}
 }
@@ -667,4 +676,149 @@ func TestConcurrentCalls(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// connectHandler is connect for any handler, so a test can wrap it.
+func connectHandler(t *testing.T, h http.Handler) *mcp.ClientSession {
+	t.Helper()
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	t.Cleanup(cancel)
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil)
+	cs, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: srv.URL, DisableStandaloneSSE: true}, nil)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+	return cs
+}
+
+var accountRe = regexp.MustCompile(`[0-9]{12}`)
+
+func TestSecretErrorHidesAccount(t *testing.T) {
+	secret := func(context.Context) (string, error) {
+		return "", errors.New("operation error SSM: GetParameter, AccessDeniedException: User: arn:aws:sts::123456789012:assumed-role/x is not authorized")
+	}
+	tok := NewMachineToken("http://127.0.0.1:1/oauth2/token", "client-1", secret, nil)
+	cs := connect(t, NewClient("http://127.0.0.1:1", tok, nil), nil)
+	r := call(t, cs, "find_tracks", map[string]any{})
+	txt := resText(t, r)
+	if !r.IsError || accountRe.MatchString(txt) || strings.Contains(txt, "arn:") {
+		t.Fatalf("%v %q", r.IsError, txt)
+	}
+	if !strings.Contains(txt, "could not read the machine client secret") {
+		t.Errorf("want a plain cause: %q", txt)
+	}
+}
+
+func TestDialErrorsHideHost(t *testing.T) {
+	tokSrv, _ := fakeToken(t, 3600)
+	for name, c := range map[string]*Client{
+		"api":   NewClient("http://127.0.0.1:1", newTestToken(tokSrv.URL), nil),
+		"token": NewClient("http://127.0.0.1:1", newTestToken("http://127.0.0.1:1/oauth2/token"), nil),
+	} {
+		cs := connect(t, c, nil)
+		r := call(t, cs, "find_tracks", map[string]any{})
+		txt := resText(t, r)
+		if !r.IsError || strings.Contains(txt, "127.0.0.1") || strings.Contains(txt, ":1") || strings.Contains(txt, "dial") {
+			t.Errorf("%s: %v %q", name, r.IsError, txt)
+		}
+		want := map[string]string{"api": "could not reach the API", "token": "could not reach the token endpoint"}[name]
+		if !strings.Contains(txt, want) {
+			t.Errorf("%s: want %q in %q", name, want, txt)
+		}
+	}
+}
+
+func TestBuildDeadlineNamesPlaylist(t *testing.T) {
+	f := newFake(t)
+	f.blockPlayerLink = true
+	// Like the Lambda adapter: the request context ends at the function deadline.
+	h := Handler(f, nil)
+	cs := connectHandler(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+		h.ServeHTTP(w, r.WithContext(ctx))
+	}))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	start := time.Now()
+	r, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "build_workout_mix", Arguments: map[string]any{"name": "Gym Mix"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if el := time.Since(start); el >= 2500*time.Millisecond {
+		t.Errorf("took %v: the reply must leave time before the 3s deadline", el)
+	}
+	txt := resText(t, r)
+	if !r.IsError || !strings.Contains(txt, "Gym Mix") || !strings.Contains(txt, "was created") {
+		t.Fatalf("%v %q", r.IsError, txt)
+	}
+}
+
+func TestBuildDescriptionSaysNoMood(t *testing.T) {
+	if !strings.Contains(buildMixTool.Description, "There is no mood parameter") {
+		t.Errorf("description: %q", buildMixTool.Description)
+	}
+}
+
+func TestInputEnums(t *testing.T) {
+	cs := connect(t, newFake(t), nil)
+	list, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]struct {
+		prop string
+		vals []any
+	}{
+		"find_tracks":       {"mood", []any{"upbeat", "calm", "any"}},
+		"build_workout_mix": {"shape", []any{"steady", "arc"}},
+		"edit_playlist":     {"order", []any{"keep", "bpm_asc", "bpm_desc", "arc"}},
+	}
+	for _, tl := range list.Tools {
+		w, ok := want[tl.Name]
+		if !ok {
+			continue
+		}
+		b, _ := json.Marshal(tl.InputSchema)
+		var sc struct {
+			Properties map[string]struct {
+				Enum []any `json:"enum"`
+			} `json:"properties"`
+		}
+		_ = json.Unmarshal(b, &sc)
+		if got := sc.Properties[w.prop].Enum; !reflect.DeepEqual(got, w.vals) {
+			t.Errorf("%s.%s enum = %v, want %v", tl.Name, w.prop, got, w.vals)
+		}
+	}
+}
+
+func TestFindTracksTotal(t *testing.T) {
+	cs := connect(t, newFake(t), nil)
+	r := call(t, cs, "find_tracks", map[string]any{"mood": "upbeat", "limit": 2})
+	m := structured(t, r)
+	if m["count"] != float64(2) || m["total"] != float64(5) {
+		t.Fatalf("count %v total %v", m["count"], m["total"])
+	}
+	if !strings.Contains(resText(t, r), "showing 2 of 5") {
+		t.Errorf("text: %q", resText(t, r))
+	}
+	r = call(t, cs, "find_tracks", map[string]any{"mood": "upbeat"})
+	if m := structured(t, r); m["total"] != float64(5) || strings.Contains(resText(t, r), "showing") {
+		t.Errorf("uncut: %v %q", m["total"], resText(t, r))
+	}
+}
+
+func TestEditReportsIDsNotInPlaylist(t *testing.T) {
+	f := newFake(t)
+	f.seed("Gym", f.ids("Q"))
+	cs := connect(t, f, nil)
+	missing := "abcdef12-0000-4000-8000-000000000099"
+	r := call(t, cs, "edit_playlist", map[string]any{"playlist": "Gym", "remove_track_ids": []string{f.id("Q"), missing}})
+	txt := resText(t, r)
+	if r.IsError || !strings.Contains(txt, "not in playlist: abcdef12") || strings.Contains(txt, missing) {
+		t.Fatalf("%v %q", r.IsError, txt)
+	}
 }
