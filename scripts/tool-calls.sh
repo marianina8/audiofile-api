@@ -29,21 +29,32 @@ shift
 since=10m
 if [ "${1:-}" = "--since" ]; then
   since="${2:-}"
-  [ -n "$since" ] || usage
+  [[ $since =~ ^[0-9]+[smhdw]$ ]] || { echo "--since needs a value like 30s, 10m, 2h, 1d" >&2; usage; }
   shift 2
 fi
 [ "$#" -eq 0 ] || usage
 
+# local_time <YYYY-MM-DDTHH:MM:SS>: the CloudWatch prefix is UTC; print it as
+# HH:MM:SS in the local zone (BSD date on macOS, GNU date as a fallback).
+local_time() {
+  local e
+  if e=$(TZ=UTC date -j -f '%Y-%m-%dT%H:%M:%S' "$1" +%s 2>/dev/null); then
+    date -r "$e" +%H:%M:%S
+  else
+    date -d "$1 UTC" +%H:%M:%S 2>/dev/null || echo "${1#*T}"
+  fi
+}
+
 # filter: log lines on stdin, tool lines out. The optional CloudWatch prefix
-# (2026-10-24T18:47:47 ) supplies the time; otherwise the local clock does.
+# (2026-10-24T18:47:47 , UTC) supplies the time, shown in local time; otherwise the local clock does.
 filter() {
   local line t name n=0
-  local re_pre='^[0-9]{4}-[0-9]{2}-[0-9]{2}T([0-9]{2}:[0-9]{2}:[0-9]{2})[^ ]* (.*)$'
+  local re_pre='^([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})[^ ]* (.*)$'
   local re_tool='^(Executing )?tool "([A-Za-z0-9_.-]+)"'
   while IFS= read -r line || [ -n "$line" ]; do
     t=""
     if [[ $line =~ $re_pre ]]; then
-      t="${BASH_REMATCH[1]}"
+      t=$(local_time "${BASH_REMATCH[1]}")
       line="${BASH_REMATCH[2]}"
     fi
     [[ $line =~ $re_tool ]] || continue
@@ -75,6 +86,11 @@ fn=$(af_aws cloudformation describe-stack-resource --stack-name "$stack" \
   --output text --no-cli-pager 2>>"$log") || fail "function lookup"
 [ -n "$fn" ] && [ "$fn" != "None" ] || fail "function lookup"
 
-# Ctrl-C ends the tail; that is a normal way to stop, not a failure.
+# Ctrl-C ends the tail (0, 130, 143): a normal stop. Anything else is a real
+# failure (expired SSO, missing permission or log group), so keep the log.
+set +e
 af_aws logs tail "/aws/lambda/$fn" --follow --since "$since" --format short \
-  --no-cli-pager 2>>"$log" | filter || true
+  --no-cli-pager 2>>"$log" | filter
+rc=${PIPESTATUS[0]}
+set -e
+case "$rc" in 0 | 130 | 143) ;; *) fail "log tail" ;; esac

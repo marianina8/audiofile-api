@@ -20,7 +20,7 @@ tool "leaky" Bearer eyJabc
 START RequestId: 11111111-2222 Version: $LATEST
 IN
 
-TOOL_CALLS_STDIN=1 "$root/scripts/tool-calls.sh" generated <"$tmp/in" >"$tmp/out" 2>&1 || fail "script exited non-zero"
+TZ=UTC TOOL_CALLS_STDIN=1 "$root/scripts/tool-calls.sh" generated <"$tmp/in" >"$tmp/out" 2>&1 || fail "script exited non-zero"
 
 grep -qx 'watching generated tool calls (Ctrl-C to stop)' "$tmp/out" || fail "header missing"
 grep -qE '^18:47:47  listTracks +\(1\)$' "$tmp/out" || fail "prefixed Server A line"
@@ -33,3 +33,32 @@ echo "ok - tool-calls filter"
 
 if TOOL_CALLS_STDIN=1 "$root/scripts/tool-calls.sh" bogus </dev/null >"$tmp/out" 2>&1; then fail "bad server accepted"; fi
 echo "ok - rejects unknown server"
+
+# Prefix times are UTC; they are shown in local time (18:47:47Z = 11:47:47 PDT).
+TZ=America/Los_Angeles TOOL_CALLS_STDIN=1 "$root/scripts/tool-calls.sh" generated <"$tmp/in" >"$tmp/out" 2>&1
+grep -qE '^11:47:47  listTracks +\(1\)$' "$tmp/out" || fail "UTC prefix not converted to local time"
+echo "ok - local time"
+
+for bad in "--since" "--since 10" "--since x10m" "--since 10m;ls"; do
+  # shellcheck disable=SC2086
+  if TOOL_CALLS_STDIN=1 "$root/scripts/tool-calls.sh" curated $bad </dev/null >"$tmp/out" 2>&1; then fail "accepted bad $bad"; fi
+done
+TOOL_CALLS_STDIN=1 "$root/scripts/tool-calls.sh" curated --since 2h </dev/null >"$tmp/out" 2>&1 || fail "good --since rejected"
+echo "ok - validates --since"
+
+# A failing log tail is not a quiet stop: non-zero exit, only a log path shown.
+mkdir "$tmp/bin" "$tmp/tmpd"
+cat >"$tmp/bin/aws" <<'STUB'
+#!/bin/sh
+if [ "$1" = cloudformation ]; then echo fake-fn; exit 0; fi
+echo "SECRETARN arn:aws:logs:us-west-2:123456789012:log-group:x" >&2
+exit 255
+STUB
+chmod +x "$tmp/bin/aws"
+if PATH="$tmp/bin:$PATH" "$root/scripts/tool-calls.sh" curated >"$tmp/out" 2>&1; then fail "tail failure exited 0"; fi
+grep -q 'log tail failed; see /' "$tmp/out" || fail "no log pointer on tail failure"
+if grep -Eq 'SECRETARN|arn:|[0-9]{12}' "$tmp/out"; then fail "AWS error text leaked"; fi
+kept=$(sed -n 's/.*log tail failed; see //p' "$tmp/out")
+grep -q SECRETARN "$kept" || fail "private log was not kept"
+rm -rf "$(dirname "$kept")"
+echo "ok - tail failure exits non-zero, shows only the log path"
