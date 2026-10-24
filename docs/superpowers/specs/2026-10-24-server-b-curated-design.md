@@ -68,7 +68,7 @@ The whole job in one call.
 - Inputs: `name` (default "Upbeat Workout Mix"), `minutes` (optional target), `shape` (`steady` | `arc`, default `steady`).
 - **steady:** upbeat tracks only, ordered by bpm ascending.
   - With `minutes`, it adds tracks in that order until the total reaches the target. It may go over by at most the last track added *(my call)*.
-  - It never adds non-upbeat tracks. If the upbeat tracks run out first, it uses them all and the summary says so plainly ("Only 9.3 minutes of upbeat music in the library; the mix is 9.3 minutes, not 30").
+  - It never adds non-upbeat tracks. If the upbeat tracks run out first, it uses them all and the summary says so plainly ("Only 9.1 minutes of upbeat music in the library; the mix is 9.1 minutes, not 30").
 - **arc:** warm-up → peak → cooldown. Every choice is deterministic, so the same library gives the same mix every run *(all my calls)*.
   - **Peak:** upbeat tracks, bpm ascending, so it builds.
   - **Warm-up and cooldown candidates:** every ready track that isn't upbeat, ranked by energy, highest first (ties broken by bpm, then id). Warm-up takes from the **top** of that ranking (energetic but slower); cooldown takes from the **bottom** (the calmest). So Morning Fog (energy 0.19) lands in cooldown, not warm-up.
