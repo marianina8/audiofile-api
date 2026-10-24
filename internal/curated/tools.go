@@ -202,7 +202,11 @@ func (t *tools) findTracks(ctx context.Context, in findInput) (*mcp.CallToolResu
 	found := FindTracks(lib, Filter{Mood: mood, BPMMin: in.BPMMin, BPMMax: in.BPMMax,
 		EnergyMin: in.EnergyMin, EnergyMax: in.EnergyMax, MinSeconds: in.MinSeconds, MaxSeconds: in.MaxSeconds}, limit)
 	out := findOutput{Tracks: tracksOut(found), Count: len(found), Minutes: Minutes(sum(found))}
-	return textResult(fmt.Sprintf("%d %s tracks, %s minutes: %s", out.Count, mood, fmtMinutes(sum(found)), joinTitles(found))), out, nil
+	kind := "tracks"
+	if mood != Any {
+		kind = string(mood) + " tracks"
+	}
+	return textResult(fmt.Sprintf("%d %s, %s minutes: %s", out.Count, kind, fmtMinutes(sum(found)), joinTitles(found))), out, nil
 }
 
 func joinTitles(ts []Track) string {
@@ -259,7 +263,7 @@ func (t *tools) buildWorkoutMix(ctx context.Context, in buildInput) (*mcp.CallTo
 	}
 	pl, err := t.api.CreatePlaylist(ctx, name, "", ids)
 	if err != nil {
-		return toolError(err.Error()), buildOutput{}, nil
+		return toolError(fmt.Sprintf("creating playlist '%s' failed: %v. It may have been created anyway; check list_playlists before retrying.", name, err)), buildOutput{}, nil
 	}
 	link, err := t.api.PlayerLink(ctx, pl.ID)
 	if err != nil {

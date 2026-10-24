@@ -370,7 +370,7 @@ func TestBuildSteadyTodaysLibrary(t *testing.T) {
 	if m["name"] != "Upbeat Workout Mix" {
 		t.Errorf("name %v", m["name"])
 	}
-	if link, _ := m["player_link"].(string); !strings.Contains(link, "/play/") {
+	if link, _ := m["player_link"].(string); !strings.HasSuffix(link, "/play/"+f.created[0].ID[:8]) {
 		t.Errorf("player_link %q", link)
 	}
 	cp := f.called("CreatePlaylist")
@@ -565,8 +565,8 @@ func TestEditRequiresPlaylist(t *testing.T) {
 	f.seed("Mix", nil)
 	cs := connect(t, f, nil)
 	r := call(t, cs, "edit_playlist", map[string]any{"order": "arc"})
-	if !r.IsError {
-		t.Fatalf("want error, got %q", resText(t, r))
+	if !r.IsError || !strings.Contains(resText(t, r), "playlist") {
+		t.Fatalf("want error mentioning playlist, got %q", resText(t, r))
 	}
 }
 
@@ -649,4 +649,22 @@ func TestLogsToolLinesWithoutSecrets(t *testing.T) {
 			t.Errorf("log contains %q: %q", bad, out)
 		}
 	}
+}
+
+func TestConcurrentCalls(t *testing.T) {
+	f := newFake(t)
+	f.seed("Gym", f.ids("Q"))
+	cs := connect(t, f, nil)
+	var wg sync.WaitGroup
+	for _, name := range []string{"find_tracks", "list_playlists", "find_tracks", "list_playlists"} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: map[string]any{}})
+			if err != nil || r.IsError {
+				t.Errorf("%s: %v", name, err)
+			}
+		}()
+	}
+	wg.Wait()
 }

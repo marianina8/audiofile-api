@@ -55,10 +55,13 @@ func logCall(l *log.Logger, name string, in any) {
 // addTool registers a tool with explicit schemas (see schemaFor) and logs
 // each call.
 func addTool[In, Out any](s *mcp.Server, l *log.Logger, tool *mcp.Tool, h func(context.Context, In) (*mcp.CallToolResult, Out, error)) {
-	tool.InputSchema = schemaFor[In]()
-	tool.OutputSchema = schemaFor[Out]()
-	mcp.AddTool(s, tool, func(ctx context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
-		logCall(l, tool.Name, in)
+	// Copy first: the tool definitions are shared package-level values and
+	// NewServer runs once per HTTP request.
+	tt := *tool
+	tt.InputSchema = schemaFor[In]()
+	tt.OutputSchema = schemaFor[Out]()
+	mcp.AddTool(s, &tt, func(ctx context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
+		logCall(l, tt.Name, in)
 		res, out, err := h(ctx, in)
 		if res != nil && res.IsError {
 			// The SDK checks Out against the output schema even for errors, and an
