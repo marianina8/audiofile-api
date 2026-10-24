@@ -1,6 +1,6 @@
 # audiofile-api
 
-A small music-library REST API on AWS (Go, SAM, Lambda, DynamoDB, S3, Cognito) plus the pieces needed to put MCP servers in front of it: an OAuth bridge so Claude and ChatGPT can sign in, a reusable MCP hosting template, a throwaway test MCP server, and a generated MCP server. It is the raw material for a YouTube video about why one MCP tool per endpoint is the lazy default and curated, task-shaped tools are better.
+A small music-library REST API on AWS (Go, SAM, Lambda, DynamoDB, S3, Cognito) plus the pieces needed to put MCP servers in front of it: an OAuth bridge so Claude and ChatGPT can sign in, a reusable MCP hosting template, a throwaway test MCP server, a generated MCP server (Server A, one tool per endpoint) and a hand-designed one (Server B, six task-shaped tools). It is the raw material for a YouTube video comparing the two.
 
 The base comes from the audiofile API in Chapter 3 of my book *Building Modern CLI Applications in Go* ([original repo](https://github.com/marianina8/audiofile)). This version was extended and published separately. The original read tags with `github.com/dhowden/tag` and transcribed audio with AssemblyAI; this one reads tags with `ffprobe`, measures BPM and energy with `ffmpeg` plus a pure-Go tempo detector, and drops transcription.
 
